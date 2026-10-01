@@ -1,0 +1,8 @@
+templates_folder = "Templates"
+
+[folder_templates]
+Books = "Book"
+Journal = "Daily"
+
+[scripts]
+scripts_folder = "Scripts"

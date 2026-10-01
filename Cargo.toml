@@ -1,0 +1,74 @@
+[package]
+name = "blackglass"
+version = "0.76.0"
+edition = "2024"
+rust-version = "1.88"
+description = "A note vault in the terminal, with mdedit as its editor"
+license = "MIT"
+
+# The vendored crossterm is a member so its tests can run
+# (`cargo test -p crossterm --lib`); blackglass alone is built and tested
+# by default.
+[workspace]
+members = [".", "vendor/crossterm"]
+default-members = ["."]
+
+[dependencies]
+# The JavaScript sandbox, without Temporal, float16 and exact sums: scripts
+# don't need them, and they add about 1.3 MB.
+boa_engine = { version = "0.22", default-features = false }
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+# The editor: live preview, one `EditorView` per tab (documentation/embedding.md
+# in mdedit). Frames, buffers and rects cross the boundary, so ratatui must be
+# the same version as mdedit's.
+mdedit = { path = "../mdedit" }
+pdf-extract = "0.12.1"
+ratatui = "0.30.2"
+regex = "1"
+serde_json = "1.0.151"
+unicode-segmentation = "1.13"
+unicode-width = "0.2.2"
+yaml-rust2 = "0.13.0"
+
+# `cargo run` and the tests are much faster with basic optimizations, which
+# keeps a large vault responsive in development builds too (as in mdedit).
+[profile.dev]
+opt-level = 1
+# Line numbers for panics and backtraces, not full debug info: the full
+# info made the debug binary about 370 MB (90% of it).
+debug = "line-tables-only"
+
+# Dependencies without debug info (blackglass and mdedit keep line numbers).
+[profile.dev.package."*"]
+debug = false
+
+[profile.dev.package.mdedit]
+debug = "line-tables-only"
+
+# Small release builds (documentation/technology_and_skills.md, "Build
+# sizes"): stripped, whole-program LTO in one unit, optimized for size.
+[profile.release]
+strip = true
+lto = "fat"
+codegen-units = 1
+opt-level = "s"
+
+# Hot paths stay fast: syntax highlighting and regular expressions.
+[profile.release.package.syntect]
+opt-level = 3
+[profile.release.package.regex-automata]
+opt-level = 3
+[profile.release.package.fancy-regex]
+opt-level = 3
+[profile.release.package.aho-corasick]
+opt-level = 3
+
+# `tests/perf.rs`: the release settings, built faster (thin LTO).
+[profile.perf]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+
+# crossterm with the mouse's back / forward buttons (vendor/crossterm/SOURCE.md).
+[patch.crates-io]
+crossterm = { path = "vendor/crossterm" }

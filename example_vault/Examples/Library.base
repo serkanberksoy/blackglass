@@ -1,0 +1,33 @@
+# A base: the books in the vault. Open it from the file explorer; "Bases:
+# Switch view" shows the other views, "Bases: Edit base source" this YAML.
+filters:
+  and:
+    - file.inFolder("Books")
+formulas:
+  stars: if(rating, "★".repeat(rating), "")
+properties:
+  file.name:
+    displayName: Book
+views:
+  - type: table
+    name: Table
+    order:
+      - file.name
+      - author
+      - formula.stars
+      - rating
+    sort:
+      - property: file.name
+        direction: ASC
+    summaries:
+      rating: Average
+  - type: cards
+    name: Cards
+    order:
+      - file.name
+      - author
+  - type: list
+    name: List
+    order:
+      - file.name
+      - author

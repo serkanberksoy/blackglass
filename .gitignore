@@ -1,0 +1,14 @@
+# Build output
+/target
+
+# Local, per-user Claude Code settings
+.claude/settings.local.json
+
+# Personal notes, kept out of the repository
+/personal
+
+# Release archives
+/dist
+
+# Your session in the example vault (blackglass writes it)
+/example_vault/.blackglass/workspace.json

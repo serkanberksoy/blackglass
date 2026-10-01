@@ -1,0 +1,99 @@
+# blackglass theme: the default, a dark theme with a purple accent.
+#
+# This file is the reference for every key. A color is "#rrggbb", a
+# 256-palette number (0-255) or a name (black, red, green, yellow, blue,
+# magenta, cyan, gray, darkgray, lightred, …, white). Colors are fitted to
+# the terminal (256 or 16 colors) like every color in blackglass. A key a
+# theme leaves out takes the value from this file.
+#
+# Copy it to ~/.config/blackglass/themes/<name>.toml to make your own; a
+# file named like a built-in theme (default, paper, ember, ocean, forest,
+# contrast) replaces it.
+
+# The name shown in "Choose theme".
+name = "Default"
+
+# The tab bar and the status bar.
+chrome = "#141414"
+# The sidebar.
+sidebar = "#1c1c1c"
+# The active tab.
+active_tab = "#2a2a2a"
+# Inputs, the sidebar's active panel tab and the open note's row.
+raised = "#2c2c2c"
+# The selected row while its list has the focus.
+selected = "#3d3566"
+# Prompts and popups (the palette, the switcher, settings).
+prompt = "#242424"
+# Text in the sidebar, tabs and prompts.
+text = "#dcddde"
+# Less important text: hints, folders of notes, counts.
+muted = "#999999"
+# The least important: separators, disabled items.
+faint = "#5c5c5c"
+# The accent: the active panel, the focused tab's underline, matches.
+accent = "#a88bfa"
+# The note's name above its text.
+title = "#a6d13a"
+# Tags in the sidebar.
+tag = "#b392f0"
+# The unsaved-changes dot on a tab.
+dirty = "#e5c07b"
+
+# Top-level folders take these colors in turn (alphabetically), and
+# everything inside a folder shows its color.
+folder1 = "#e06c75"
+folder2 = "#e89a5c"
+folder3 = "#e5c07b"
+folder4 = "#6fc28b"
+folder5 = "#4ec9b0"
+folder6 = "#6cb6eb"
+folder7 = "#a9b1f0"
+folder8 = "#c68ce8"
+
+# The editor's headings, level 1 to 6 ("default": the editor's own
+# colors). The editor settings' heading colors win over these.
+heading1 = "default"
+heading2 = "default"
+heading3 = "default"
+heading4 = "default"
+heading5 = "default"
+heading6 = "default"
+
+# The editor. "default" keeps the terminal's own: its text and background
+# (editor_text, editor_bg), and the named colors the editor draws with
+# (color_…), like a terminal color scheme.
+editor_text = "default"
+editor_bg = "default"
+# text on highlights (==text==)
+color_black = "default"
+# danger callouts, important tasks
+color_red = "default"
+# done tasks, tip callouts, level-4 headings
+color_green = "default"
+# highlights, warning callouts, level-3 headings
+color_yellow = "default"
+# note callouts, level-5 headings
+color_blue = "default"
+# level-1 headings, example callouts
+color_magenta = "default"
+# list bullets, level-2 headings
+color_cyan = "default"
+# quotes, level-6 headings
+color_gray = "default"
+# markers, frames, comments, dim text
+color_darkgray = "default"
+# errors
+color_lightred = "default"
+# new lines in diffs
+color_lightgreen = "default"
+# inline code
+color_lightyellow = "default"
+# links
+color_lightblue = "default"
+# (rarely used)
+color_lightmagenta = "default"
+# footnotes, tags
+color_lightcyan = "default"
+# bright text
+color_white = "default"

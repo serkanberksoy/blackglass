@@ -1,0 +1,53 @@
+# Tasks
+
+With the **Tasks** plugin, tasks carry dates and priorities:
+
+- [ ] Renew passport ⏫ 📅 2026-10-15
+- [ ] Water the plants 🔁 every week 📅 2026-10-02
+- [ ] Draft the talk 🔼 ⏳ 2026-10-05 🛫 2026-10-01
+- [ ] Book the venue 🆔 venue
+  - [ ] Compare three places
+  - [ ] Ask for prices
+- [ ] Send invitations ⛔ venue
+- [x] Buy a notebook ✅ 2026-09-28
+- [.] Called the bank: all fine
+
+Put the cursor on a task and run "Tasks: Toggle task done" (Ctrl+P): the
+done date is written, and a 🔁 task gets its next occurrence. "Tasks:
+Create or edit task" asks for its fields; "Tasks: Postpone task" moves it.
+
+## Open, by due date
+
+```tasks
+not done
+path includes Examples/Tasks
+group by due
+sort by priority
+```
+
+## As a tree
+
+```tasks
+path includes Examples/Tasks
+not done
+show tree
+hide backlink
+```
+
+Type a task and a word like `due` or `high`: the fields are suggested
+(dates after 📅, rules after 🔁).
+
+## Waiting on something
+
+```tasks
+is blocked
+explain
+```
+
+## Logs
+
+```tasks
+status.type is NON_TASK
+```
+
+Click a task in a result to check it off.

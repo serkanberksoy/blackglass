@@ -1,0 +1,6 @@
+[daily]
+folder = "Journal"
+template = "Templates/Daily"
+
+[weekly]
+folder = "Journal/Weeks"

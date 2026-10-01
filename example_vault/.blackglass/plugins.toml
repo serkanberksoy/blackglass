@@ -1,0 +1,3 @@
+# blackglass plugins for this vault
+installed = ["dataview", "templater", "periodic-notes", "mermaid", "tables", "tasks", "bases", "bookmarks", "zettelkasten", "citations"]
+enabled = ["dataview", "templater", "periodic-notes", "mermaid", "tables", "tasks", "bases", "bookmarks", "zettelkasten", "citations"]
