@@ -1,6 +1,6 @@
 # Version history
 
-Current version: **0.76.0**
+Current version: **0.76.1**
 
 ## Versioning rules
 
@@ -26,6 +26,14 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 0.76.1 (2026-10-06)
+
+### Changed
+- **A Linux release that runs everywhere**: one static x86_64 binary
+  (musl), built by `scripts/release-linux.sh`, with mimalloc as its
+  allocator (musl's own made opening a 5,000-note vault 18 times slower;
+  with mimalloc it's as fast as the usual build).
 
 ## 0.76.0 (2026-10-01)
 

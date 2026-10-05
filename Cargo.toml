@@ -1,6 +1,6 @@
 [package]
 name = "blackglass"
-version = "0.76.0"
+version = "0.76.1"
 edition = "2024"
 rust-version = "1.88"
 description = "A note vault in the terminal, with mdedit as its editor"
@@ -47,6 +47,12 @@ debug = "line-tables-only"
 
 # Small release builds (documentation/technology_and_skills.md, "Build
 # sizes"): stripped, whole-program LTO in one unit, optimized for size.
+# The static Linux build (musl): musl's own allocator is slow with the
+# vault's parallel indexing (opening a 5,000-note vault 18 times slower);
+# mimalloc makes it as fast as the usual build.
+[target.'cfg(target_env = "musl")'.dependencies]
+mimalloc = { version = "0.1", default-features = false }
+
 [profile.release]
 strip = true
 lto = "fat"

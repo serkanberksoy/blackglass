@@ -34,3 +34,9 @@ pub mod vault_picker;
 pub mod watch;
 pub mod words;
 pub mod workspace;
+
+/// The static Linux build's allocator: musl's own is slow with the vault's
+/// parallel indexing (see Cargo.toml).
+#[cfg(target_env = "musl")]
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;

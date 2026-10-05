@@ -50,7 +50,7 @@ blackglass --help               # all options and keys
 one, **Ctrl+G** searches the vault, **Ctrl+B** moves between the sidebar and
 the editor, **Ctrl+Q** quits.
 
-**Version:** 0.76.0 · **Stage:** M1 (workspace) and M2 (commands & plugins) complete; M3 (vault features, Zettelkasten) nearly · [Version history](VERSION.md)
+**Version:** 0.76.1 · **Stage:** M1 (workspace) and M2 (commands & plugins) complete; M3 (vault features, Zettelkasten) nearly · [Version history](VERSION.md)
 
 ```
  Files  Search  Tags           │ 2026-08-08 ×  2026-08-09 ×  +
@@ -68,7 +68,8 @@ the editor, **Ctrl+Q** quits.
 
 **Linux (x86_64):** download `blackglass` from the
 [latest release](https://github.com/serkanberksoy/blackglass/releases/latest),
-make it executable (`chmod +x blackglass`) and put it on your `PATH`.
+make it executable (`chmod +x blackglass`) and put it on your `PATH`. It's
+one static program: it runs on any distribution.
 
 **From source** (any platform): blackglass builds with Rust **1.88 or newer**
 ([rustup](https://rustup.rs)). It needs **mdedit** checked out next to
@@ -208,6 +209,7 @@ scripts/check.sh                     # the gate: fmt, clippy -D warnings, tests
 ./run.sh Dataview.md                 # … opened at a note (options like --no-mouse pass on)
 cargo test --test workspace          # the workspace, driven like a user would
 cargo build --release                # the release build (small and fast: see Cargo.toml)
+scripts/release-linux.sh             # the static Linux release, packed into dist/
 ```
 
 The layout: `src/workspace.rs` (the app: tabs, keys, effects), `src/ui/`
