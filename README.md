@@ -66,14 +66,18 @@ the editor, **Ctrl+Q** quits.
 
 ## Install
 
-blackglass builds from source with Rust **1.88 or newer**
+**Linux (x86_64):** download `blackglass` from the
+[latest release](https://github.com/serkanberksoy/blackglass/releases/latest),
+make it executable (`chmod +x blackglass`) and put it on your `PATH`.
+
+**From source** (any platform): blackglass builds with Rust **1.88 or newer**
 ([rustup](https://rustup.rs)). It needs **mdedit** checked out next to
 it, as `../mdedit` (a path dependency):
 
 ```bash
 mkdir notes-tools && cd notes-tools
-git clone <mdedit repository> mdedit
-git clone <blackglass repository> blackglass
+git clone https://github.com/serkanberksoy/mdedit.git
+git clone https://github.com/serkanberksoy/blackglass.git
 cd blackglass
 cargo build --release              # the program: target/release/blackglass
 cargo install --path .             # or into ~/.cargo/bin
