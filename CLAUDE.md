@@ -166,6 +166,11 @@ cargo test --test project            # versions, feature ↔ test mapping, --hel
   `![[file#part]]` shows (a `.base` file: its block, `# view: V` first).
 - Tests write vaults under `CARGO_TARGET_TMPDIR` or the system temp dir,
   never into `example_vault/`.
+- Dataview's results are `eval::Results` (`List`, `Table`, `Tasks`,
+  `Calendar`); rows carry the page, task, `FLATTEN` vars and `GROUP BY`
+  group. Unsaved edits reach the index from `App::tick`
+  (`sync_unsaved`). DataviewJS's `dv.io` / `dv.view` are the one place a
+  script reads files: only inside the vault (`js::load`), read-only.
 - New notes the user makes go through `App::create_new_note`, which gives
   them a note ID when the vault's Notes settings ask for one
   (`note_ids`, `.blackglass/notes.toml`); only notes with names of their

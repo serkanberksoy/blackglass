@@ -1,10 +1,11 @@
 //! Dataview values: what a field holds after typing its text, as Dataview
 //! does: numbers, `true` / `false`, dates (`2026-08-09`,
-//! `2026-08-11T10:36:33+02:00`), links (`[[Note]]`), lists and text.
+//! `2026-08-11T10:36:33+02:00`), links (`[[Note]]`), lists and text; and
+//! what queries make: objects (`{a: 1}`) and durations (`dur(1 day)`).
 
 use std::cmp::Ordering;
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{DateTime, Months, NaiveDate, NaiveDateTime, NaiveTime};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -17,6 +18,128 @@ pub enum Value {
     /// A link to a note, by its name or path as written (no `.md`).
     Link(String),
     List(Vec<Value>),
+    /// Keys and values, in order (`{a: 1}`, `object("a", 1)`, a group).
+    Object(Vec<(String, Value)>),
+    Duration(Dur),
+}
+
+/// A length of time: whole months (they differ in days) and milliseconds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Dur {
+    pub months: i64,
+    pub millis: i64,
+}
+
+const SECOND: i64 = 1000;
+const MINUTE: i64 = 60 * SECOND;
+const HOUR: i64 = 60 * MINUTE;
+const DAY: i64 = 24 * HOUR;
+const WEEK: i64 = 7 * DAY;
+
+impl Dur {
+    /// `1 day`, `3 weeks`, `2h 30m`, `1 year, 2 months`; `None` if it isn't
+    /// one.
+    pub fn parse(text: &str) -> Option<Dur> {
+        let mut dur = Dur::default();
+        let mut words = text
+            .split(|c: char| c.is_whitespace() || c == ',')
+            .filter(|w| !w.is_empty())
+            .peekable();
+        let mut any = false;
+        while let Some(word) = words.next() {
+            // `2h` or `2 hours`.
+            let digits = word
+                .find(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+                .unwrap_or(word.len());
+            let (number, unit) = if digits < word.len() {
+                (&word[..digits], word[digits..].to_string())
+            } else {
+                (word, words.next()?.to_string())
+            };
+            let n: f64 = number.parse().ok()?;
+            let unit = unit.to_lowercase();
+            // Plurals (`days`); `ms` is its own unit.
+            let unit = if unit == "ms" {
+                "millisecond"
+            } else {
+                unit.trim_end_matches('s')
+            };
+            match unit {
+                "y" | "yr" | "year" => dur.months += (n * 12.0) as i64,
+                "mo" | "month" => dur.months += n as i64,
+                "w" | "wk" | "week" => dur.millis += (n * WEEK as f64) as i64,
+                "d" | "day" => dur.millis += (n * DAY as f64) as i64,
+                "h" | "hr" | "hour" => dur.millis += (n * HOUR as f64) as i64,
+                "m" | "min" | "minute" => dur.millis += (n * MINUTE as f64) as i64,
+                "" | "sec" | "second" => dur.millis += (n * SECOND as f64) as i64,
+                "millisecond" => dur.millis += n as i64,
+                _ => return None,
+            }
+            any = true;
+        }
+        any.then_some(dur)
+    }
+
+    /// Roughly, for comparing: a month is 30 days.
+    pub fn approx_millis(self) -> i64 {
+        self.months * 30 * DAY + self.millis
+    }
+
+    pub fn plus(self, other: Dur) -> Dur {
+        Dur {
+            months: self.months + other.months,
+            millis: self.millis + other.millis,
+        }
+    }
+
+    pub fn times(self, n: f64) -> Dur {
+        Dur {
+            months: (self.months as f64 * n) as i64,
+            millis: (self.millis as f64 * n) as i64,
+        }
+    }
+
+    /// `date` moved by this (`back`: the other way).
+    pub fn shift(self, date: NaiveDateTime, back: bool) -> Option<NaiveDateTime> {
+        let (months, millis) = if back {
+            (-self.months, -self.millis)
+        } else {
+            (self.months, self.millis)
+        };
+        let moved = if months >= 0 {
+            date.checked_add_months(Months::new(months as u32))?
+        } else {
+            date.checked_sub_months(Months::new((-months) as u32))?
+        };
+        moved.checked_add_signed(chrono::Duration::milliseconds(millis))
+    }
+
+    /// `3 days, 2 hours` (years, months, days, hours, minutes, seconds).
+    pub fn display(self) -> String {
+        let mut parts = Vec::new();
+        let unit = |n: i64, one: &str, parts: &mut Vec<String>| {
+            if n != 0 {
+                parts.push(format!("{n} {one}{}", if n.abs() == 1 { "" } else { "s" }));
+            }
+        };
+        unit(self.months / 12, "year", &mut parts);
+        unit(self.months % 12, "month", &mut parts);
+        let mut ms = self.millis;
+        for (size, name) in [
+            (DAY, "day"),
+            (HOUR, "hour"),
+            (MINUTE, "minute"),
+            (SECOND, "second"),
+        ] {
+            unit(ms / size, name, &mut parts);
+            ms %= size;
+        }
+        if parts.is_empty() {
+            "0 seconds".into()
+        } else {
+            parts.join(", ")
+        }
+    }
 }
 
 impl Value {
@@ -87,6 +210,22 @@ impl Value {
             Value::Text(t) | Value::Link(t) => !t.is_empty(),
             Value::Date(_) => true,
             Value::List(l) => !l.is_empty(),
+            Value::Object(o) => !o.is_empty(),
+            Value::Duration(d) => d.approx_millis() != 0,
+        }
+    }
+
+    /// Whether two values are of the same kind (a number and a text that
+    /// read alike aren't one group).
+    pub fn kind_eq(&self, other: &Value) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
+
+    /// A key of an object (`None` if it isn't one, or hasn't it).
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        match self {
+            Value::Object(o) => o.iter().find(|(k, _)| k == key).map(|(_, v)| v),
+            _ => None,
         }
     }
 
@@ -113,6 +252,10 @@ impl Value {
             (Value::Text(a), Value::Text(b)) => Some(a.cmp(b)),
             (Value::Link(a), Value::Link(b)) => Some(a.to_lowercase().cmp(&b.to_lowercase())),
             (Value::Date(a), Value::Date(b)) => Some(a.cmp(b)),
+            (Value::Duration(a), Value::Duration(b)) => {
+                Some(a.approx_millis().cmp(&b.approx_millis()))
+            }
+            (Value::Object(a), Value::Object(b)) => (a == b).then_some(Ordering::Equal),
             // A date compares with a date written as text.
             (Value::Date(a), Value::Text(b)) => parse_date(b).map(|b| a.cmp(&b)),
             (Value::Text(a), Value::Date(b)) => parse_date(a).map(|a| a.cmp(b)),
@@ -144,6 +287,8 @@ impl Value {
             Value::Text(_) => 4,
             Value::Link(_) => 5,
             Value::List(_) => 6,
+            Value::Duration(_) => 7,
+            Value::Object(_) => 8,
         }
     }
 
@@ -159,6 +304,12 @@ impl Value {
             Value::Date(d) if d.time() == NaiveTime::MIN => d.format("%Y-%m-%d").to_string(),
             Value::Date(d) => d.format("%Y-%m-%d %H:%M").to_string(),
             Value::List(l) => l.iter().map(Value::display).collect::<Vec<_>>().join(", "),
+            Value::Object(o) => o
+                .iter()
+                .map(|(k, v)| format!("{k}: {}", v.display()))
+                .collect::<Vec<_>>()
+                .join(", "),
+            Value::Duration(d) => d.display(),
         }
     }
 }
@@ -275,6 +426,38 @@ mod tests {
             Value::Null.sort_order(&n(0.0)),
             Ordering::Less,
             "nulls first"
+        );
+    }
+
+    #[test]
+    fn durations() {
+        let d = |t: &str| Dur::parse(t).unwrap_or_else(|| panic!("{t}"));
+        assert_eq!(d("1 day").millis, DAY);
+        assert_eq!(d("2h 30m").millis, 2 * HOUR + 30 * MINUTE);
+        assert_eq!(
+            d("1 year, 2 months"),
+            Dur {
+                months: 14,
+                millis: 0
+            }
+        );
+        assert_eq!(d("3 weeks").display(), "21 days");
+        assert_eq!(d("1 day 2 hours").display(), "1 day, 2 hours");
+        assert!(Dur::parse("soon").is_none());
+        let jan31 = NaiveDate::from_ymd_opt(2026, 1, 31)
+            .unwrap()
+            .and_time(NaiveTime::MIN);
+        assert_eq!(
+            d("1 month")
+                .shift(jan31, false)
+                .map(|x| x.date().to_string())
+                .as_deref(),
+            Some("2026-02-28"),
+            "the month's last day"
+        );
+        assert_eq!(
+            Value::Duration(d("1 day")).compare(&Value::Duration(d("23 hours"))),
+            Some(Ordering::Greater)
         );
     }
 

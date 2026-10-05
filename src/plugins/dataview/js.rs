@@ -10,12 +10,20 @@
 //!
 //! Page lists have Dataview's array helpers: `where`, `filter`, `map`,
 //! `flatMap`, `sort(key, "asc" | "desc")`, `groupBy`, `limit`, `slice`,
-//! `first`, `last`, `distinct`, `sum`, `avg`, `min`, `max`, `array`.
+//! `first`, `last`, `distinct`, `sum`, `avg`, `min`, `max`, `array`, and
+//! swizzling (`pages.file.name`: each page's, lists flattened).
+//! `dv.io.load(path)` / `dv.io.csv(path)` read a file in the vault (only
+//! there, read-only), `dv.view(path, input)` runs `path.js` or
+//! `path/view.js`, `dv.luxon.DateTime` has Luxon's basics (`now`,
+//! `fromISO`, `fromFormat`, `plus`, `minus`, `startOf`, `diff`,
+//! `toFormat`, `toISODate`, the date's parts), and `dv.markdownTable`,
+//! `markdownList`, `markdownTaskList` write Markdown.
 //! Dates are text (`2026-08-09`), so they sort and compare as expected.
 //! `dv.paragraph(text, {color: "#8ab4f8", bold: true})` colors its text (a
 //! blackglass extension, for charts).
 
 use std::cell::RefCell;
+use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
 
 use boa_engine::{Context, JsNativeError, JsResult, JsValue};
@@ -34,6 +42,8 @@ use crate::plugins::js;
 thread_local! {
     /// The index `dv.pages` filters, while a block runs.
     static INDEX: RefCell<Option<Rc<Index>>> = const { RefCell::new(None) };
+    /// The vault's folder, for `dv.io` and `dv.view`, while a block runs.
+    static ROOT: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
 }
 
 /// The `dv` API, in JavaScript. `__pages` (the vault's pages) and `__this`
@@ -52,6 +62,94 @@ function __item(v) {
 }
 function __key(f) { return typeof f === "function" ? f : (x => x); }
 function __cmp(a, b) { return a === b ? 0 : (a === null || a === undefined) ? -1 : (b === null || b === undefined) ? 1 : a < b ? -1 : 1; }
+// Luxon's DateTime, its basics, on local ISO text (`2026-08-09T10:30:00`).
+function __luxonFmt(f) {
+  const map = [["yyyy","YYYY"],["yy","YY"],["MMMM","MMMM"],["MMM","MMM"],["MM","MM"],["M","M"],["dd","DD"],["d","D"],["EEEE","dddd"],["EEE","ddd"],["HH","HH"],["mm","mm"],["ss","ss"],["WW","WW"]];
+  let out = "", i = 0;
+  outer: while (i < f.length) {
+    if (f[i] === "'") { const j = f.indexOf("'", i + 1); out += "[" + f.slice(i + 1, j < 0 ? f.length : j) + "]"; i = j < 0 ? f.length : j + 1; continue; }
+    for (const [l, m] of map) if (f.startsWith(l, i)) { out += m; i += l.length; continue outer; }
+    out += /[A-Za-z]/.test(f[i]) ? "[" + f[i] + "]" : f[i]; i++;
+  }
+  return out;
+}
+function __dt(iso) {
+  if (!iso) return null;
+  const full = iso.length === 10 ? iso + "T00:00:00" : iso;
+  const num = f => Number(__fmt(full, f));
+  return {
+    __iso: full,
+    get year() { return num("YYYY"); }, get month() { return num("M"); }, get day() { return num("D"); },
+    get hour() { return num("H"); }, get minute() { return num("m"); }, get second() { return num("s"); },
+    get weekday() { return num("E"); }, get weekNumber() { return num("W"); },
+    toFormat(f) { return __fmt(full, __luxonFmt(f)); },
+    toISODate() { return full.slice(0, 10); },
+    toISO() { return full; },
+    toString() { return this.toISODate(); },
+    toMillis() { return new Date(full).getTime(); },
+    valueOf() { return this.toMillis(); },
+    plus(d) { return __dt(__shift(full, __isoDur(d, 1))); },
+    minus(d) { return __dt(__shift(full, __isoDur(d, -1))); },
+    startOf(unit) {
+      if (unit === "year") return __dt(full.slice(0, 4) + "-01-01");
+      if (unit === "month") return __dt(full.slice(0, 7) + "-01");
+      if (unit === "week") return __dt(__shift(full.slice(0, 10), String(1 - this.weekday)));
+      return __dt(full.slice(0, 10));
+    },
+    diff(other, unit = "milliseconds") {
+      const ms = this.toMillis() - other.toMillis();
+      const size = { milliseconds: 1, seconds: 1e3, minutes: 6e4, hours: 36e5, days: 864e5, weeks: 6048e5 }[unit] || 1;
+      const o = {}; o[unit] = ms / size;
+      return o;
+    },
+  };
+}
+// `{days: 3, months: 1}` as an ISO 8601 duration (P1M3D), `sign` -1 back.
+function __isoDur(d, sign) {
+  if (typeof d === "number") d = { milliseconds: d };
+  const n = k => Math.abs(Number(d[k] || d[k + "s"] || 0));
+  const neg = sign < 0 ? "-" : "";
+  let date = "", time = "";
+  if (n("year")) date += n("year") + "Y";
+  if (n("month")) date += n("month") + "M";
+  if (n("week")) date += n("week") + "W";
+  if (n("day")) date += n("day") + "D";
+  if (n("hour")) time += n("hour") + "H";
+  if (n("minute")) time += n("minute") + "M";
+  const secs = n("second") + n("millisecond") / 1000;
+  if (secs) time += secs + "S";
+  return neg + "P" + (date || (time ? "" : "0D")) + (time ? "T" + time : "");
+}
+const __DateTime = {
+  now() { return __dt(__now()); },
+  local() { return __dt(__now()); },
+  fromISO(t) { return __dt(String(t).replace(" ", "T")); },
+  fromFormat(t, f) { const iso = __parse(String(t), __luxonFmt(f)); return iso ? __dt(iso) : null; },
+  fromMillis(ms) { const d = new Date(ms); const p = n => String(n).padStart(2, "0"); return __dt(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`); },
+};
+function __csv(text) {
+  const rows = [];
+  let row = [], cell = "", quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+      else if (c === '"') quoted = false;
+      else cell += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ",") { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell); cell = "";
+      if (row.some(x => x !== "")) rows.push(row);
+      row = [];
+    } else cell += c;
+  }
+  if (cell !== "" || row.length) { row.push(cell); if (row.some(x => x !== "")) rows.push(row); }
+  const [head, ...body] = rows;
+  const typed = v => v.trim() !== "" && !isNaN(Number(v)) ? Number(v) : v;
+  return __da(body.map(r => Object.fromEntries((head || []).map((h, k) => [h, typed(r[k] ?? "")]))));
+}
 function __da(items) {
   const a = Array.from(items);
   const methods = {
@@ -83,7 +181,16 @@ function __da(items) {
     array() { return Array.from(this); },
   };
   for (const [name, f] of Object.entries(methods)) Object.defineProperty(a, name, { value: f });
-  return a;
+  // Swizzling: `pages.file.name` is each page's, lists flattened.
+  return new Proxy(a, {
+    get(t, p, r) {
+      if (typeof p === "symbol" || p in t || p === "then" || p === "toJSON") return Reflect.get(t, p, r);
+      return __da(Array.prototype.flatMap.call(t, x => {
+        const v = x === null || x === undefined ? undefined : x[p];
+        return Array.isArray(v) ? Array.from(v) : (v === undefined ? [] : [v]);
+      }));
+    },
+  });
 }
 const dv = {
   pages(source) { return __da(JSON.parse(__source(source || "")).map(i => __pages[i])); },
@@ -106,6 +213,28 @@ const dv = {
     if (t === "tomorrow") return __shift(now, "P1D").slice(0, 10);
     if (t === "yesterday") return __shift(now, "-P1D").slice(0, 10);
     return String(text);
+  },
+  luxon: { DateTime: __DateTime },
+  io: {
+    async load(path) { return __load(String(path)); },
+    async csv(path) { const t = __load(String(path)); return t === undefined ? undefined : __csv(t); },
+    normalize(path) { return String(path); },
+  },
+  async view(path, input) {
+    const p = String(path).replace(/\.js$/, "");
+    const code = __load(p + ".js") ?? __load(p + "/view.js");
+    if (code === undefined) throw new Error(`dv.view: no ${p}.js or ${p}/view.js`);
+    await (new ((async function () {}).constructor)("dv", "input", code))(dv, input);
+  },
+  array(x) { return __da(Array.isArray(x) ? x : [x]); },
+  isArray(x) { return Array.isArray(x); },
+  markdownTable(headers, rows) {
+    const line = cells => "| " + Array.from(cells, __str).join(" | ") + " |";
+    return [line(headers), line(Array.from(headers, () => "---")), ...Array.from(rows || [], line)].join("\n");
+  },
+  markdownList(items) { return Array.from(items || [], i => "- " + __str(i)).join("\n"); },
+  markdownTaskList(tasks) {
+    return Array.from(tasks || [], t => `- [${t.completed ? "x" : (t.status || " ")}] ${t.text}`).join("\n");
   },
   func: {
     dateformat(date, format) { return __fmt(String(date), format); },
@@ -150,6 +279,7 @@ pub fn render(
     code: &str,
     index: &Rc<Index>,
     this: Option<&Page>,
+    root: &Path,
     width: usize,
     d: &Display,
 ) -> Vec<(Line<'static>, Option<String>)> {
@@ -162,9 +292,7 @@ pub fn render(
          (async () => {{\n{code}\n}})().then(() => {{ globalThis.__result = JSON.stringify(__out); }}, e => {{ globalThis.__error = String(e); }});",
         pages = js::literal(&Json::Array(pages).to_string()),
     );
-    INDEX.with(|i| *i.borrow_mut() = Some(Rc::clone(index)));
-    let result = js::run(&script, &[("__source", 1, source)]);
-    INDEX.with(|i| *i.borrow_mut() = None);
+    let result = run_with(&script, index, root);
     match result.and_then(|out| serde_json::from_str::<Vec<Json>>(&out).map_err(|e| e.to_string()))
     {
         Ok(items) if items.is_empty() => {
@@ -176,6 +304,59 @@ pub fn render(
             .collect(),
         Err(e) => render::error(&e).into_iter().map(|l| (l, None)).collect(),
     }
+}
+
+/// An inline DataviewJS expression (`` `$= dv.current().file.name` ``):
+/// its value as text.
+pub fn inline(
+    code: &str,
+    index: &Rc<Index>,
+    this: Option<&Page>,
+    root: &Path,
+) -> Result<String, String> {
+    let pages: Vec<Json> = index.pages.iter().map(|p| page_json(p, index)).collect();
+    let this_index = this
+        .and_then(|t| index.pages.iter().position(|p| p.path == t.path))
+        .map_or(-1, |i| i as i64);
+    let script = format!(
+        "const __pages = JSON.parse({pages});\nconst __this = {this_index};\n{PRELUDE}\n\
+         (async () => ({code}))().then(v => {{ globalThis.__result = __str(v); }}, e => {{ globalThis.__error = String(e); }});",
+        pages = js::literal(&Json::Array(pages).to_string()),
+    );
+    run_with(&script, index, root)
+}
+
+/// Runs `script` with the index and the vault's folder set for the
+/// natives.
+fn run_with(script: &str, index: &Rc<Index>, root: &Path) -> Result<String, String> {
+    INDEX.with(|i| *i.borrow_mut() = Some(Rc::clone(index)));
+    ROOT.with(|r| *r.borrow_mut() = Some(root.to_path_buf()));
+    let result = js::run(script, &[("__source", 1, source), ("__load", 1, load)]);
+    INDEX.with(|i| *i.borrow_mut() = None);
+    ROOT.with(|r| *r.borrow_mut() = None);
+    result
+}
+
+/// `__load(path)`: a file's text, from the vault only (`undefined` if
+/// it isn't there).
+fn load(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue> {
+    let path = js::arg(args, 0, ctx)?.unwrap_or_default();
+    let rel = Path::new(path.trim_start_matches("./"));
+    if rel
+        .components()
+        .any(|c| !matches!(c, Component::Normal(_) | Component::CurDir))
+    {
+        return Err(JsNativeError::typ()
+            .with_message(format!("dv.io: {path} is outside the vault"))
+            .into());
+    }
+    let Some(root) = ROOT.with(|r| r.borrow().clone()) else {
+        return Ok(JsValue::undefined());
+    };
+    Ok(match std::fs::read_to_string(root.join(rel)) {
+        Ok(text) => js::text(&text),
+        Err(_) => JsValue::undefined(),
+    })
 }
 
 /// `dv.pages(source)`: the indexes of the pages in a `FROM` source.
@@ -195,7 +376,10 @@ fn source(_: &JsValue, args: &[JsValue], ctx: &mut Context) -> JsResult<JsValue>
             .pages
             .iter()
             .enumerate()
-            .filter(|(_, p)| from.as_ref().is_none_or(|s| eval::matches(s, p)))
+            .filter(|(_, p)| {
+                from.as_ref()
+                    .is_none_or(|s| eval::matches(s, p, index, None))
+            })
             .collect();
         pages.sort_by_key(|(_, p)| p.rel.to_lowercase());
         pages.into_iter().map(|(i, _)| i).collect::<Vec<_>>()
@@ -219,18 +403,24 @@ fn page_json(page: &Page, index: &Index) -> Json {
             })
         })
         .collect();
+    // Every `file.*` field the queries have, links and tasks as scripts
+    // use them.
+    let Json::Object(mut file) = value_json(&eval::file_object(page, index)) else {
+        unreachable!("file_object is an object")
+    };
+    let ours = json!({
+        "name": page.name, "path": page.rel, "folder": page.folder,
+        "link": page.name, "size": page.size, "ctime": date(page.ctime),
+        "mtime": date(page.mtime), "day": date(page.day), "tags": page.tags,
+        "outlinks": page.outlinks,
+        "inlinks": index.inlinks(page).map(|p| p.name.clone()).collect::<Vec<_>>(),
+        "tasks": tasks,
+    });
+    if let Json::Object(ours) = ours {
+        file.extend(ours);
+    }
     let mut obj = Map::new();
-    obj.insert(
-        "file".into(),
-        json!({
-            "name": page.name, "path": page.rel, "folder": page.folder,
-            "link": page.name, "size": page.size, "ctime": date(page.ctime),
-            "mtime": date(page.mtime), "day": date(page.day), "tags": page.tags,
-            "outlinks": page.outlinks,
-            "inlinks": index.inlinks(page).map(|p| p.name.clone()).collect::<Vec<_>>(),
-            "tasks": tasks,
-        }),
-    );
+    obj.insert("file".into(), Json::Object(file));
     for (key, value) in &page.fields {
         let v = value_json(value);
         obj.entry(key.clone()).or_insert_with(|| v.clone());
@@ -250,6 +440,10 @@ fn value_json(value: &Value) -> Json {
         Value::Date(d) if d.time() == NaiveTime::MIN => json!(d.format("%Y-%m-%d").to_string()),
         Value::Date(d) => json!(d.format("%Y-%m-%dT%H:%M").to_string()),
         Value::List(items) => Json::Array(items.iter().map(value_json).collect()),
+        Value::Object(o) => {
+            Json::Object(o.iter().map(|(k, v)| (k.clone(), value_json(v))).collect())
+        }
+        Value::Duration(d) => json!(d.display()),
     }
 }
 
@@ -359,7 +553,7 @@ fn output(item: &Json, width: usize, d: &Display) -> Vec<(Line<'static>, Option<
                         };
                     let action = task.get("path").and_then(Json::as_str).map(|p| {
                         let line = task.get("line").and_then(Json::as_u64).unwrap_or(0);
-                        render::line_action(p, line as usize)
+                        render::task_action(p, line as usize, d)
                     });
                     lines.push((
                         Line::from(vec![
@@ -401,6 +595,12 @@ mod tests {
                     ),
                     ("Journal/2026-08-09.md", "waistline:: 138\nRead [[Dune]]"),
                     ("Journal/2026-08-10.md", "waistline:: 137"),
+                    (
+                        "data/books.csv",
+                        "title,year\nDune,1965\n\"Emma, a novel\",1815\n",
+                    ),
+                    ("views/stars.js", "dv.paragraph('★'.repeat(input.n))"),
+                    ("views/hello/view.js", "dv.paragraph('hello ' + input)"),
                 ],
             );
             Vault::open(&dir).unwrap()
@@ -411,7 +611,15 @@ mod tests {
     fn text(code: &str) -> Vec<String> {
         let ix = index();
         let this = ix.pages.iter().find(|p| p.name == "Dune");
-        render(code, &ix, this, 60, &Display::default())
+        let root = this
+            .unwrap()
+            .path
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        render(code, &ix, this, &root, 60, &Display::default())
             .iter()
             .map(|(l, _)| l)
             .map(|l| {
@@ -476,6 +684,71 @@ mod tests {
             ["n = 2", "a", "b"]
         );
         assert_eq!(text("const x = 1;"), ["No results"], "nothing written");
+    }
+
+    #[test]
+    fn swizzling_files_views_dates_and_markdown() {
+        assert_eq!(
+            text("dv.paragraph(dv.pages('\"Books\"').file.name.join(' & '))"),
+            ["Dune & Emma"],
+            "swizzled"
+        );
+        assert_eq!(
+            text("dv.paragraph(dv.pages('\"Books\"').file.tags.length)"),
+            ["2"],
+            "lists flattened"
+        );
+        assert_eq!(
+            text(
+                "dv.paragraph(dv.pages('\"Books\"').file.etags.length + ' ' + typeof dv.page('Dune').file.frontmatter)"
+            ),
+            ["2 object"],
+            "every file field the queries have"
+        );
+        assert_eq!(
+            text("const t = await dv.io.load('data/books.csv'); dv.paragraph(t.split('\\n')[0])"),
+            ["title,year"]
+        );
+        assert_eq!(
+            text(
+                "const rows = await dv.io.csv('data/books.csv'); dv.paragraph(rows.map(r => r.title + ' ' + (r.year + 1)).join('; '))"
+            ),
+            ["Dune 1966; Emma, a novel 1816"],
+            "typed numbers, quoted commas"
+        );
+        assert!(
+            text("dv.paragraph(String(await dv.io.load('../secret')))")[0]
+                .contains("outside the vault")
+        );
+        assert_eq!(text("await dv.view('views/stars', {n: 3})"), ["★★★"]);
+        assert_eq!(text("await dv.view('views/hello', 'you')"), ["hello you"]);
+        let dt = "dv.luxon.DateTime";
+        assert_eq!(
+            text(&format!(
+                "dv.paragraph({dt}.fromISO('2026-08-09').plus({{days: 3, months: 1}}).toFormat('yyyy-MM-dd EEE'))"
+            )),
+            ["2026-09-12 Sat"]
+        );
+        assert_eq!(
+            text(&format!(
+                "dv.paragraph({dt}.fromFormat('09.08.2026', 'dd.MM.yyyy').toISODate() + ' ' + {dt}.fromISO('2026-08-09').weekday)"
+            )),
+            ["2026-08-09 7"]
+        );
+        assert_eq!(
+            text(&format!(
+                "dv.paragraph({dt}.fromISO('2026-08-01') < {dt}.fromISO('2026-08-09'))"
+            )),
+            ["true"]
+        );
+        assert_eq!(
+            text("dv.paragraph(dv.markdownTable(['A', 'B'], [[1, 2]]))"),
+            ["| A | B |", "| --- | --- |", "| 1 | 2 |"]
+        );
+        assert_eq!(
+            text("dv.paragraph(dv.markdownList(['x', 'y']))"),
+            ["- x", "- y"]
+        );
     }
 
     #[test]

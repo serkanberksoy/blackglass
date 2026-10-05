@@ -1,6 +1,10 @@
-//! Parses Dataview's query language (DQL): `LIST`, `TABLE` and `TASK`
-//! queries with `FROM`, `WHERE`, `SORT` and `LIMIT`. Keywords are
-//! case-insensitive; clauses may share a line or have their own.
+//! Parses Dataview's query language (DQL): `LIST`, `TABLE`, `TASK` and
+//! `CALENDAR` queries with `FROM`, then `WHERE`, `SORT`, `LIMIT`, `GROUP
+//! BY` and `FLATTEN` in any order (they run in the order written).
+//! Keywords are case-insensitive; clauses may share a line or have their
+//! own. Expressions have literals (`[1, 2]`, `{a: 1}`), indexing
+//! (`list[0]`, `obj.key`, `[[Note]].field`), lambdas (`(x) => x + 1`) and
+//! `+ - * / %`.
 //!
 //! ```text
 //! TABLE author, rating AS "Stars" FROM #reading AND "Books"
@@ -14,15 +18,33 @@ use super::value::{Value, link_name, parse_date};
 pub struct Query {
     pub kind: Kind,
     pub from: Option<Source>,
-    pub filters: Vec<Expr>,
-    pub sort: Vec<(Expr, bool)>,
-    pub limit: Option<usize>,
+    /// What runs on the rows, in order.
+    pub commands: Vec<Command>,
+}
+
+/// A data command, run on the rows in the order written.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Command {
+    Where(Expr),
+    /// Keys, each descending or not.
+    Sort(Vec<(Expr, bool)>),
+    Limit(usize),
+    /// Rows with the same value make one row (`key`, `rows`); `AS` names
+    /// the key.
+    GroupBy(Expr, Option<String>),
+    /// One row per entry of a list; `AS` names the entry (else the
+    /// expression's text does).
+    Flatten(Expr, String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Kind {
-    /// `LIST` with an optional value after each page.
-    List(Option<Expr>),
+    /// `LIST` with an optional value after each page; `WITHOUT ID` shows
+    /// only the values.
+    List {
+        value: Option<Expr>,
+        without_id: bool,
+    },
     /// `TABLE`: columns (expression, header); `WITHOUT ID` hides the
     /// page column.
     Table {
@@ -30,6 +52,8 @@ pub enum Kind {
         without_id: bool,
     },
     Task,
+    /// `CALENDAR date`: a month grid with the pages on their days.
+    Calendar(Expr),
 }
 
 /// Which pages a query looks at.
@@ -39,8 +63,12 @@ pub enum Source {
     Tag(String),
     /// `"folder"` (or a note's path).
     Folder(String),
-    /// `[[Note]]`: pages linking to the note.
+    /// `[[Note]]`: pages linking to the note (`""`: to the current one,
+    /// `[[]]`).
     LinksTo(String),
+    /// `outgoing([[Note]])`: the pages the note links to (`""`: the
+    /// current one).
+    Outgoing(String),
     And(Box<Source>, Box<Source>),
     Or(Box<Source>, Box<Source>),
     Not(Box<Source>),
@@ -60,6 +88,7 @@ pub enum Op {
     Sub,
     Mul,
     Div,
+    Mod,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,6 +100,14 @@ pub enum Expr {
     Not(Box<Expr>),
     Neg(Box<Expr>),
     Binary(Op, Box<Expr>, Box<Expr>),
+    /// `[a, b]`.
+    List(Vec<Expr>),
+    /// `{key: value}`.
+    Object(Vec<(String, Expr)>),
+    /// `base[index]`, `base.key`.
+    Index(Box<Expr>, Box<Expr>),
+    /// `(x, y) => body`, for `map`, `filter` and the like.
+    Lambda(Vec<String>, Box<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -96,6 +133,22 @@ pub fn parse(source: &str) -> Result<Query, String> {
         source,
     }
     .query()
+}
+
+/// Parses one expression (an inline query's: `` `= this.file.name` ``).
+pub fn parse_expr(source: &str) -> Result<Expr, String> {
+    let (tokens, spans) = tokenize(source)?.into_iter().unzip();
+    let mut p = Parser {
+        tokens,
+        spans,
+        at: 0,
+        source,
+    };
+    let e = p.expr()?;
+    if p.peek().is_some() {
+        return Err(format!("unexpected {}", p.describe()));
+    }
+    Ok(e)
 }
 
 struct Parser<'a> {
@@ -138,74 +191,117 @@ impl Parser<'_> {
         yes
     }
 
+    /// Whether a clause starts here (`sort(…)` is the function, though).
     fn at_clause(&self) -> bool {
-        self.peek().is_none() || CLAUSES.iter().any(|c| self.at_word(c))
+        self.peek().is_none() || (CLAUSES.iter().any(|c| self.at_word(c)) && !self.call_next())
+    }
+
+    /// Whether the token after this one is `(` (a function call).
+    fn call_next(&self) -> bool {
+        matches!(self.tokens.get(self.at + 1), Some(Token::Symbol("(")))
     }
 
     fn query(&mut self) -> Result<Query, String> {
         let kind = match self.next() {
             Some(Token::Word(w)) if w.eq_ignore_ascii_case("list") => {
-                Kind::List(if self.at_clause() {
-                    None
-                } else {
-                    Some(self.expr()?)
-                })
+                let without_id = self.without_id()?;
+                Kind::List {
+                    value: if self.at_clause() {
+                        None
+                    } else {
+                        Some(self.expr()?)
+                    },
+                    without_id,
+                }
             }
             Some(Token::Word(w)) if w.eq_ignore_ascii_case("table") => self.table()?,
             Some(Token::Word(w)) if w.eq_ignore_ascii_case("task") => Kind::Task,
             Some(Token::Word(w)) if w.eq_ignore_ascii_case("calendar") => {
-                return Err("CALENDAR queries aren't supported yet".into());
+                if self.at_clause() {
+                    return Err("CALENDAR needs a date (CALENDAR file.day)".into());
+                }
+                Kind::Calendar(self.expr()?)
             }
-            _ => return Err("a query starts with LIST, TABLE or TASK".into()),
+            _ => return Err("a query starts with LIST, TABLE, TASK or CALENDAR".into()),
         };
         let mut query = Query {
             kind,
             from: None,
-            filters: Vec::new(),
-            sort: Vec::new(),
-            limit: None,
+            commands: Vec::new(),
         };
         while self.peek().is_some() {
             if self.eat_word("from") {
                 if query.from.is_some() {
                     return Err("only one FROM".into());
                 }
+                if !query.commands.is_empty() {
+                    return Err("FROM comes before WHERE, SORT and the others".into());
+                }
                 query.from = Some(self.source_or()?);
             } else if self.eat_word("where") {
-                query.filters.push(self.expr()?);
+                query.commands.push(Command::Where(self.expr()?));
             } else if self.eat_word("sort") {
+                let mut keys = Vec::new();
                 loop {
                     let key = self.expr()?;
                     let descending = self.eat_word("desc") || self.eat_word("descending");
                     if !descending && !self.eat_word("asc") {
                         self.eat_word("ascending");
                     }
-                    query.sort.push((key, descending));
+                    keys.push((key, descending));
                     if !self.eat(",") {
                         break;
                     }
                 }
+                query.commands.push(Command::Sort(keys));
             } else if self.eat_word("limit") {
                 match self.next() {
                     Some(Token::Number(n)) if n >= 0.0 && n.fract() == 0.0 => {
-                        query.limit = Some(n as usize);
+                        query.commands.push(Command::Limit(n as usize));
                     }
                     _ => return Err("LIMIT needs a whole number".into()),
                 }
-            } else if self.at_word("group") || self.at_word("flatten") {
-                return Err(format!(
-                    "{} isn't supported yet",
-                    if self.at_word("group") {
-                        "GROUP BY"
-                    } else {
-                        "FLATTEN"
-                    }
-                ));
+            } else if self.eat_word("group") {
+                if !self.eat_word("by") {
+                    return Err("expected GROUP BY".into());
+                }
+                let expr = self.expr()?;
+                let name = self.name_after_as()?;
+                query.commands.push(Command::GroupBy(expr, name));
+            } else if self.eat_word("flatten") {
+                let start = self.at;
+                let expr = self.expr()?;
+                let text = self.text_of(start, self.at);
+                let name = self.name_after_as()?.unwrap_or(text);
+                query.commands.push(Command::Flatten(expr, name));
             } else {
                 return Err(format!("unexpected {}", self.describe()));
             }
         }
         Ok(query)
+    }
+
+    /// `AS name`, if it's next.
+    fn name_after_as(&mut self) -> Result<Option<String>, String> {
+        if !self.eat_word("as") {
+            return Ok(None);
+        }
+        match self.next() {
+            Some(Token::Text(t) | Token::Word(t)) => Ok(Some(t)),
+            _ => Err("AS needs a name".into()),
+        }
+    }
+
+    /// `WITHOUT ID`, if it's next.
+    fn without_id(&mut self) -> Result<bool, String> {
+        if !self.at_word("without") {
+            return Ok(false);
+        }
+        self.at += 1;
+        if !self.eat_word("id") {
+            return Err("expected WITHOUT ID".into());
+        }
+        Ok(true)
     }
 
     fn describe(&self) -> String {
@@ -221,15 +317,7 @@ impl Parser<'_> {
     }
 
     fn table(&mut self) -> Result<Kind, String> {
-        let without_id = if self.at_word("without") {
-            self.at += 1;
-            if !self.eat_word("id") {
-                return Err("expected WITHOUT ID".into());
-            }
-            true
-        } else {
-            false
-        };
+        let without_id = self.without_id()?;
         let mut columns = Vec::new();
         if !self.at_clause() {
             loop {
@@ -291,9 +379,23 @@ impl Parser<'_> {
             }
             return Ok(inner);
         }
+        // `outgoing([[Note]])`: the pages it links to.
+        if self.at_word("outgoing") {
+            self.at += 1;
+            let ok = self.eat("(");
+            let target = match self.next() {
+                Some(Token::Link(l)) if ok => link_name(&l),
+                _ => return Err("outgoing needs a link: outgoing([[Note]])".into()),
+            };
+            if !self.eat(")") {
+                return Err("missing ) after outgoing([[…]]".into());
+            }
+            return Ok(Source::Outgoing(target));
+        }
         match self.next() {
             Some(Token::Tag(t)) => Ok(Source::Tag(t)),
             Some(Token::Text(folder)) => Ok(Source::Folder(folder.trim_matches('/').to_string())),
+            // `[[]]` and `[[#]]` are the current note.
             Some(Token::Link(l)) => Ok(Source::LinksTo(link_name(&l))),
             _ => {
                 self.at -= 1;
@@ -323,7 +425,7 @@ impl Parser<'_> {
                 (">", Op::Gt),
             ],
             &[("+", Op::Add), ("-", Op::Sub)],
-            &[("*", Op::Mul), ("/", Op::Div)],
+            &[("*", Op::Mul), ("/", Op::Div), ("%", Op::Mod)],
         ];
         if level == LEVELS.len() {
             return self.unary();
@@ -353,14 +455,120 @@ impl Parser<'_> {
         if self.eat("-") {
             return Ok(Expr::Neg(Box::new(self.unary()?)));
         }
-        self.primary()
+        let mut e = self.primary()?;
+        // Indexing: `x[0]`, `x.key` (`[[Note]].field`, `list[0].text`).
+        loop {
+            if self.eat("[") {
+                let index = self.expr()?;
+                if !self.eat("]") {
+                    return Err("missing ] after an index".into());
+                }
+                e = Expr::Index(Box::new(e), Box::new(index));
+            } else if self.eat(".") {
+                match self.next() {
+                    Some(Token::Word(w)) => {
+                        for key in w.split('.') {
+                            e = Expr::Index(
+                                Box::new(e),
+                                Box::new(Expr::Value(Value::Text(key.to_string()))),
+                            );
+                        }
+                    }
+                    _ => return Err("expected a name after .".into()),
+                }
+            } else {
+                return Ok(e);
+            }
+        }
+    }
+
+    /// `(a, b) =>` or `a =>` starting here: the parameters.
+    fn lambda_params(&self) -> Option<(Vec<String>, usize)> {
+        let mut at = self.at;
+        let word = |at: usize| match self.tokens.get(at) {
+            Some(Token::Word(w)) if !w.contains('.') => Some(w.clone()),
+            _ => None,
+        };
+        let symbol =
+            |at: usize, s: &str| matches!(self.tokens.get(at), Some(Token::Symbol(x)) if *x == s);
+        if let Some(w) = word(at)
+            && symbol(at + 1, "=>")
+        {
+            return Some((vec![w], at + 2));
+        }
+        if !symbol(at, "(") {
+            return None;
+        }
+        at += 1;
+        let mut params = Vec::new();
+        if !symbol(at, ")") {
+            loop {
+                params.push(word(at)?);
+                at += 1;
+                if symbol(at, ")") {
+                    break;
+                }
+                if !symbol(at, ",") {
+                    return None;
+                }
+                at += 1;
+            }
+        }
+        symbol(at + 1, "=>").then_some((params, at + 2))
     }
 
     fn primary(&mut self) -> Result<Expr, String> {
+        if let Some((params, body)) = self.lambda_params() {
+            self.at = body;
+            return Ok(Expr::Lambda(params, Box::new(self.expr()?)));
+        }
+        if self.eat("[") {
+            let mut items = Vec::new();
+            if !self.eat("]") {
+                loop {
+                    items.push(self.expr()?);
+                    if self.eat("]") {
+                        break;
+                    }
+                    if !self.eat(",") {
+                        return Err("missing ] after a list".into());
+                    }
+                }
+            }
+            return Ok(Expr::List(items));
+        }
+        if self.eat("{") {
+            let mut entries = Vec::new();
+            if !self.eat("}") {
+                loop {
+                    let key = match self.next() {
+                        Some(Token::Word(w) | Token::Text(w)) => w,
+                        _ => return Err("an object's keys are names: {name: value}".into()),
+                    };
+                    if !self.eat(":") {
+                        return Err(format!("missing : after {key}"));
+                    }
+                    entries.push((key, self.expr()?));
+                    if self.eat("}") {
+                        break;
+                    }
+                    if !self.eat(",") {
+                        return Err("missing } after an object".into());
+                    }
+                }
+            }
+            return Ok(Expr::Object(entries));
+        }
         match self.next() {
             Some(Token::Number(n)) => Ok(Expr::Value(Value::Number(n))),
             Some(Token::Text(t)) => Ok(Expr::Value(Value::Text(t))),
-            Some(Token::Link(l)) => Ok(Expr::Value(Value::Link(link_name(&l)))),
+            // A link in an expression keeps its heading (`section = [[N#H]]`).
+            Some(Token::Link(l)) => {
+                let target = l.split('|').next().unwrap_or_default().trim();
+                Ok(Expr::Value(Value::Link(
+                    target.trim_end_matches(".md").to_string(),
+                )))
+            }
             Some(Token::Tag(t)) => Ok(Expr::Value(Value::Text(format!("#{t}")))),
             Some(Token::Symbol("(")) => {
                 let inner = self.expr()?;
@@ -371,7 +579,10 @@ impl Parser<'_> {
             }
             Some(Token::Word(w)) => {
                 let lower = w.to_lowercase();
-                if CLAUSES.contains(&lower.as_str()) || matches!(lower.as_str(), "and" | "or") {
+                let call = matches!(self.peek(), Some(Token::Symbol("(")));
+                if (CLAUSES.contains(&lower.as_str()) && !call)
+                    || matches!(lower.as_str(), "and" | "or")
+                {
                     self.at -= 1;
                     return Err(format!("expected a value before {}", self.describe()));
                 }
@@ -405,8 +616,24 @@ impl Parser<'_> {
         }
     }
 
-    /// An argument; `date(today)` and `date(2026-08-09)` take bare words.
+    /// An argument; `date(today)` and `date(2026-08-09)` take bare words,
+    /// `dur(1 day 2 hours)` its words as they are.
     fn call_arg(&mut self, function: &str) -> Result<Expr, String> {
+        if function == "dur" && !matches!(self.peek(), Some(Token::Text(_))) {
+            let start = self.at;
+            let mut depth = 0;
+            while let Some(t) = self.peek() {
+                match t {
+                    Token::Symbol("(") => depth += 1,
+                    Token::Symbol(")") if depth == 0 => break,
+                    Token::Symbol(")") => depth -= 1,
+                    Token::Symbol(",") if depth == 0 => break,
+                    _ => {}
+                }
+                self.at += 1;
+            }
+            return Ok(Expr::Value(Value::Text(self.text_of(start, self.at))));
+        }
         if function == "date" {
             match self.peek() {
                 Some(Token::Word(w)) if parse_date(w).is_some() || is_date_word(w) => {
@@ -444,8 +671,31 @@ fn tokenize(source: &str) -> Result<Vec<Spanned>, String> {
             continue;
         }
         let (token, len) = if c == '"' {
-            let end = rest[1..].find('"').ok_or("a text in quotes isn't closed")?;
-            (Token::Text(rest[1..1 + end].to_string()), end + 2)
+            // `\"` is a quote and `\\` a backslash; other escapes stay (`\d`
+            // in a regex).
+            let mut text = String::new();
+            let mut end = None;
+            let mut it = rest.char_indices().skip(1);
+            while let Some((k, ch)) = it.next() {
+                match ch {
+                    '\\' => match it.next() {
+                        Some((_, '"')) => text.push('"'),
+                        Some((_, '\\')) => text.push('\\'),
+                        Some((_, other)) => {
+                            text.push('\\');
+                            text.push(other);
+                        }
+                        None => break,
+                    },
+                    '"' => {
+                        end = Some(k);
+                        break;
+                    }
+                    other => text.push(other),
+                }
+            }
+            let end = end.ok_or("a text in quotes isn't closed")?;
+            (Token::Text(text), end + 1)
         } else if let Some(inner) = rest.strip_prefix("[[") {
             let end = inner.find("]]").ok_or("a [[link]] isn't closed")?;
             (Token::Link(inner[..end].to_string()), end + 4)
@@ -483,7 +733,8 @@ fn tokenize(source: &str) -> Result<Vec<Spanned>, String> {
             )
         } else {
             let symbol = [
-                "!=", "<=", ">=", "=", "<", ">", "+", "-", "*", "/", "!", "(", ")", ",",
+                "=>", "!=", "<=", ">=", "=", "<", ">", "+", "-", "*", "/", "%", "!", "(", ")", ",",
+                "[", "]", "{", "}", ":", ".",
             ]
             .into_iter()
             .find(|s| rest.starts_with(s))
@@ -515,9 +766,21 @@ mod tests {
     #[test]
     fn list_and_task_queries() {
         let q = parse("LIST").unwrap();
-        assert_eq!(q.kind, Kind::List(None));
+        assert_eq!(
+            q.kind,
+            Kind::List {
+                value: None,
+                without_id: false
+            }
+        );
         let q = parse("list file.mtime\nfrom #reading").unwrap();
-        assert_eq!(q.kind, Kind::List(Some(field("file.mtime"))));
+        assert_eq!(
+            q.kind,
+            Kind::List {
+                value: Some(field("file.mtime")),
+                without_id: false
+            }
+        );
         assert_eq!(q.from, Some(Source::Tag("reading".into())));
         assert_eq!(parse("TASK WHERE !completed").unwrap().kind, Kind::Task);
     }
@@ -575,8 +838,8 @@ mod tests {
         let q = parse("LIST WHERE a = 1 or b > 2 and !c SORT file.name DESC, x LIMIT 5").unwrap();
         let bin = |op, l, r| Expr::Binary(op, Box::new(l), Box::new(r));
         assert_eq!(
-            q.filters,
-            [bin(
+            q.commands[0],
+            Command::Where(bin(
                 Op::Or,
                 bin(Op::Eq, field("a"), num(1.0)),
                 bin(
@@ -584,26 +847,37 @@ mod tests {
                     bin(Op::Gt, field("b"), num(2.0)),
                     Expr::Not(Box::new(field("c")))
                 )
-            )]
+            ))
         );
-        assert_eq!(q.sort, [(field("file.name"), true), (field("x"), false)]);
-        assert_eq!(q.limit, Some(5));
+        assert_eq!(
+            q.commands[1],
+            Command::Sort(vec![(field("file.name"), true), (field("x"), false)])
+        );
+        assert_eq!(q.commands[2], Command::Limit(5));
     }
 
     #[test]
     fn functions_and_dates() {
         let q = parse("LIST WHERE contains(file.tags, #x) and file.day >= date(2026-08-01) and file.day < date(today)").unwrap();
-        let text = format!("{:?}", q.filters);
+        let text = format!("{:?}", q.commands);
         assert!(text.contains("Call(\"contains\""), "{text}");
         assert!(text.contains("Text(\"2026-08-01\")"), "{text}");
         assert!(text.contains("Text(\"today\")"), "{text}");
     }
 
     #[test]
+    fn texts_with_escapes() {
+        let q = parse(r#"LIST WHERE a = "say \"hi\"" and regextest("\d+ \\", b)"#).unwrap();
+        let text = format!("{:?}", q.commands);
+        assert!(text.contains(r#"Text("say \"hi\"")"#), "{text}");
+        assert!(text.contains(r#"Text("\\d+ \\")"#), "{text}");
+    }
+
+    #[test]
     fn errors_say_what_is_wrong() {
         assert_eq!(
             parse("SELECT *").unwrap_err(),
-            "a query starts with LIST, TABLE or TASK"
+            "a query starts with LIST, TABLE, TASK or CALENDAR"
         );
         assert!(parse("LIST FROM 3").unwrap_err().contains("FROM takes"));
         assert!(
@@ -612,7 +886,7 @@ mod tests {
                 .contains("expected a value")
         );
         assert!(parse("LIST LIMIT x").unwrap_err().contains("whole number"));
-        assert!(parse("LIST GROUP BY x").unwrap_err().contains("GROUP BY"));
+        assert!(parse("LIST GROUP x").unwrap_err().contains("GROUP BY"));
         assert!(
             parse("LIST WHERE \"open")
                 .unwrap_err()

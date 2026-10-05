@@ -8,8 +8,8 @@ editor. Features and their tests: `requirements/features.md`.
 
 | Milestone | Goal | Items | Status |
 |-----------|------|-------|--------|
-| **M1** Workspace | A daily-usable vault: file explorer, tabs, quick switcher, vault search, tags, vault-wide links | W-01 … W-21 | ✅ 0.1.0 (W-05, W-20 partial) |
-| **M2** Commands & plugins | A command palette, an Obsidian-like plugin structure (settings screens, panels, a JavaScript sandbox), Dataview (with DataviewJS), Templater (with JavaScript), Periodic Notes (with a calendar); view mode, clickable links, extract, help, settings with customizable shortcuts, move and delete, today's note button, folder templates, apply template, indentation width, the settings window, Recent Files; all of Templater (W-125, 0.69.0) | W-37 … W-73, W-89, W-125 | ✅ 0.2.0 … 0.21.0 (W-42 partial) |
+| **M1** Workspace | A daily-usable vault: file explorer, tabs, quick switcher, vault search, tags, vault-wide links | W-01 … W-21 | ✅ 0.1.0 (W-05, W-20 finished with W-29, W-34) |
+| **M2** Commands & plugins | A command palette, an Obsidian-like plugin structure (settings screens, panels, a JavaScript sandbox), Dataview (with DataviewJS), Templater (with JavaScript), Periodic Notes (with a calendar); view mode, clickable links, extract, help, settings with customizable shortcuts, move and delete, today's note button, folder templates, apply template, indentation width, the settings window, Recent Files; all of Templater (W-125, 0.69.0) | W-37 … W-73, W-89, W-125 | ✅ 0.2.0 … 0.21.0, W-42 complete in 0.77.0 |
 | **M3** Vault features | Obsidian's vault features: backlinks, outline, bookmarks, navigation history, file operations, daily notes, autocomplete; **now:** the next batch (queue 6: web links, word count, missing links, search, unique note, renaming, properties, link preview, Mermaid, PDF text, outline, outgoing links, unlinked mentions, random note), then Git (queue 7), footnotes, comments and sync (queue 8); **done:** Zettelkasten (queue 15, W-119 … W-123 in 0.72.0 … 0.76.0; note IDs W-124 in 0.68.0) | W-22 … W-34, W-93 … W-111, W-118 (property editor, 0.41.0) | 🚧 (W-23 in 0.3.0, W-28, W-31, W-25 backlinks in 0.19.0, W-88 open vault in 0.20.0; the core list W-22 … W-34 done in 0.70.0: click to place the cursor, dimmed missing links, watching the vault, the session, nested tags, Bookmarks, tag and property suggestions; every action a command with keys to change, 0.71.0; Zettelkasten and Citations, 0.72.0 … 0.76.0) |
 | **M4** Queries | Block embeds, query embeds, Bases (queue 7), the Tasks plugin (queue 8) | W-35, W-36, W-74 … W-81 | 🟡 embeds 0.58.0 … 0.59.0, Tasks and Bases 0.50.0 … 0.57.0 (their parts left in queue 10 and 11) |
 | **M5** AI | An AI plugin: chat with a model about the notes, custom commands and Quick Ask in the note, coding agents (Claude Code …) working in the vault, inline edits with a diff, vault search (after Claudian and Copilot for Obsidian) | W-82 … W-87 | ⬜ (requested 2026-09-30) |
@@ -45,7 +45,7 @@ In order:
    `.obsidian/community-plugins.json`). Needs one generic mdedit API: a
    `CodeBlockProcessor` in `Shared` that the editor asks when drawing a
    fenced block the cursor isn't in (mdedit 2.2.0).
-5. ✅ **The first plugin: Dataview, W-42 … W-44** (0.2.0; W-42 partial). An implementation of
+5. ✅ **The first plugin: Dataview, W-42 … W-44** (0.2.0; complete in 0.77.0). An implementation of
    [Obsidian Dataview](https://blacksmithgu.github.io/obsidian-dataview/):
    a ```` ```dataview ```` block runs its query over the vault and shows
    the result in place of the code; with the cursor in the block, its
@@ -238,15 +238,14 @@ In order:
 
 ## 2. M1: Workspace ✅
 
-Done in 0.1.0: see `VERSION.md`. Left partial:
-- W-05: no file watching (F5 scans again) → W-29.
-- W-20: a click in the text doesn't place the cursor → W-34.
+Done in 0.1.0: see `VERSION.md`. W-05 and W-20 were finished by M3's
+file watching (W-29) and clicks in the text (W-34).
 
 ## 3. M2: Commands & plugins
 
 Done in 0.2.0: see the execution queue above and `VERSION.md`. What
-Dataview (W-42) still lacks compared with Obsidian's, with IDs, effort and
-an order: `requirements/dataview_requirements.md`.
+Dataview (W-42) has all of Obsidian's (0.77.0); each piece and its test:
+`requirements/dataview_requirements.md`.
 
 Next plugins: the user's Obsidian plugins ranked by effort are in
 `requirements/plugin_candidates.md`.

@@ -78,6 +78,12 @@ impl Value {
             DvValue::Date(d) => Value::Date(*d),
             DvValue::Link(l) => Value::Link(l.clone()),
             DvValue::List(l) => Value::List(l.iter().map(Value::from_dv).collect()),
+            DvValue::Object(o) => Value::Object(
+                o.iter()
+                    .map(|(k, v)| (k.clone(), Value::from_dv(v)))
+                    .collect(),
+            ),
+            DvValue::Duration(d) => Value::Text(d.display()),
         }
     }
 

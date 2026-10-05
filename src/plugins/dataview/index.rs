@@ -1,7 +1,9 @@
 //! Dataview's index: one page per note, with its fields (frontmatter and
-//! inline `key:: value`), tags, outgoing links and tasks, and the file
-//! data behind `file.*` (name, folder, size, dates, and the day in a daily
-//! note's name).
+//! inline `key:: value`), tags, outgoing links, list items and tasks (each
+//! with its parent, section, tags, links, block id and own fields, emoji
+//! dates included), and the file data behind `file.*` (name, folder,
+//! size, dates, the day in a daily note's name, aliases, whether it's
+//! bookmarked).
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -11,21 +13,48 @@ use chrono::{DateTime, Local, NaiveDateTime};
 use super::value::{Value, link_name, parse_date};
 use crate::vault::{Note, Vault, tags};
 
-/// A task (`- [ ] text`) in a page.
-#[derive(Debug, Clone, PartialEq)]
+/// A list item (`- text`) or task (`- [ ] text`) in a page.
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Task {
     /// Line index in the note.
     pub line: usize,
     pub text: String,
-    /// The character between the brackets (`' '`, `x`, `/` …).
+    /// The character between the brackets (`' '`, `x`, `/` …; `' '` for a
+    /// plain list item).
     pub status: char,
+    /// A task (with a checkbox), not a plain list item.
+    pub is_task: bool,
+    /// The item it's under (its line), if it's nested.
+    pub parent: Option<usize>,
+    /// The heading it's under.
+    pub section: Option<String>,
+    /// Its tags (with `#`) and links (note names, lowercase).
+    pub tags: Vec<String>,
+    pub outlinks: Vec<String>,
+    /// Its `^id`.
+    pub block_id: Option<String>,
+    /// Its own fields: `[key:: value]` and emoji dates (`📅 2026-08-09`:
+    /// `due`; ✅ `completion`, ➕ `created`, 🛫 `start`, ⏳ `scheduled`).
+    pub fields: Vec<(String, Value)>,
+    /// It has inline fields (`[key:: value]`), not only emoji dates.
+    pub annotated: bool,
 }
 
 impl Task {
     pub fn completed(&self) -> bool {
-        matches!(self.status, 'x' | 'X')
+        self.is_task && matches!(self.status, 'x' | 'X')
     }
 }
+
+/// The emoji dates tasks carry, and the fields they make.
+const EMOJI_DATES: [(&str, &str); 6] = [
+    ("✅", "completion"),
+    ("📅", "due"),
+    ("➕", "created"),
+    ("🛫", "start"),
+    ("⏳", "scheduled"),
+    ("⌛", "scheduled"),
+];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Page {
@@ -42,7 +71,15 @@ pub struct Page {
     pub tags: Vec<String>,
     /// Link targets, as note names in lowercase (`[[Books/Dune]]` → `dune`).
     pub outlinks: Vec<String>,
+    /// Its tasks, and every list item (tasks too).
     pub tasks: Vec<Task>,
+    pub lists: Vec<Task>,
+    /// Its frontmatter fields alone.
+    pub frontmatter: Vec<(String, Value)>,
+    /// Its other names (`aliases`).
+    pub aliases: Vec<String>,
+    /// Bookmarked (the Bookmarks plugin).
+    pub starred: bool,
     pub size: u64,
     pub mtime: Option<NaiveDateTime>,
     pub ctime: Option<NaiveDateTime>,
@@ -68,16 +105,25 @@ impl Page {
                 .collect(),
             outlinks: Vec::new(),
             tasks: Vec::new(),
+            lists: Vec::new(),
+            frontmatter: Vec::new(),
+            aliases: Vec::new(),
+            starred: false,
             size: note.lines.iter().map(|l| l.len() as u64 + 1).sum(),
             mtime: note.modified.map(local),
             ctime: meta
                 .and_then(|m| m.created().ok())
                 .map(local)
                 .or(note.modified.map(local)),
-            day: parse_date(name.get(..10).unwrap_or("")),
+            day: day_in(&name),
             name,
         };
         scan(&note.lines, &mut page);
+        page.aliases = match page.field("aliases") {
+            Some(Value::List(items)) => items.iter().map(Value::display).collect(),
+            Some(Value::Null) | None => Vec::new(),
+            Some(one) => vec![one.display()],
+        };
         if page.day.is_none()
             && let Some(Value::Date(d)) = page.field("date")
         {
@@ -111,16 +157,23 @@ pub struct Index {
 
 impl Index {
     pub fn build(vault: &Vault) -> Index {
-        Index {
-            pages: crate::vault::par_map(&vault.notes, Page::from_note),
+        let starred = bookmarked(vault);
+        let mut pages = crate::vault::par_map(&vault.notes, Page::from_note);
+        for page in &mut pages {
+            page.starred = starred.contains(&page.rel);
         }
+        Index { pages }
     }
 
     /// The note at `path` changed (or went, or came): its page follows.
     pub fn update(&mut self, vault: &Vault, path: &Path) {
         let at = self.pages.iter().position(|p| p.path == path);
         match (vault.note(path), at) {
-            (Some(note), Some(i)) => self.pages[i] = Page::from_note(note),
+            (Some(note), Some(i)) => {
+                let mut page = Page::from_note(note);
+                page.starred = bookmarked(vault).contains(&page.rel);
+                self.pages[i] = page;
+            }
             (None, Some(i)) => {
                 self.pages.remove(i);
             }
@@ -141,43 +194,161 @@ impl Index {
     }
 }
 
-/// Reads frontmatter fields, inline fields, links and tasks from `lines`.
+/// The paths (in the vault) the Bookmarks plugin has bookmarked.
+fn bookmarked(vault: &Vault) -> HashSet<String> {
+    let file = vault
+        .root
+        .join(".blackglass/plugins/bookmarks/bookmarks.json");
+    let Ok(text) = std::fs::read_to_string(file) else {
+        return HashSet::new();
+    };
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return HashSet::new();
+    };
+    json["items"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|i| i["type"] == "file")
+        .filter_map(|i| i["path"].as_str().map(String::from))
+        .collect()
+}
+
+/// The date in a note's name: `2026-08-09` anywhere in it, or
+/// `20260809`.
+fn day_in(name: &str) -> Option<NaiveDateTime> {
+    let chars: Vec<(usize, char)> = name.char_indices().collect();
+    for (k, &(at, c)) in chars.iter().enumerate() {
+        if !c.is_ascii_digit() || (k > 0 && chars[k - 1].1.is_ascii_digit()) {
+            continue;
+        }
+        let rest = &name[at..];
+        if let Some(d) = rest.get(..10).and_then(parse_date) {
+            return Some(d);
+        }
+        if let Some(digits) = rest.get(..8)
+            && digits.chars().all(|c| c.is_ascii_digit())
+            && !rest[8..].starts_with(|c: char| c.is_ascii_digit())
+            && let Ok(d) = chrono::NaiveDate::parse_from_str(digits, "%Y%m%d")
+        {
+            return Some(d.and_time(chrono::NaiveTime::MIN));
+        }
+    }
+    None
+}
+
+/// Reads frontmatter fields, inline fields, links, list items and tasks
+/// from `lines`.
 fn scan(lines: &[String], page: &mut Page) {
     let mut body = 0;
     if lines.first().map(|l| l.trim_end()) == Some("---")
         && let Some(end) = (1..lines.len()).find(|&i| matches!(lines[i].trim_end(), "---" | "..."))
     {
         frontmatter(&lines[1..end], &mut page.fields);
+        page.frontmatter = page.fields.clone();
         body = end + 1;
     }
     let mut fence: Option<&str> = None;
     // The links seen (a note with thousands of links stays linear).
     let mut seen: HashSet<String> = page.outlinks.iter().cloned().collect();
+    let mut section: Option<String> = None;
+    // The open list items: (indent, line).
+    let mut open: Vec<(usize, usize)> = Vec::new();
     for (i, line) in lines.iter().enumerate().skip(body) {
         let trimmed = line.trim_start();
-        if let Some(open) = fence {
-            if trimmed.starts_with(open) {
+        if let Some(f) = fence {
+            if trimmed.starts_with(f) {
                 fence = None;
             }
             continue;
         }
-        if let Some(open) = ["```", "~~~"].into_iter().find(|f| trimmed.starts_with(f)) {
-            fence = Some(open);
+        if let Some(f) = ["```", "~~~"].into_iter().find(|f| trimmed.starts_with(f)) {
+            fence = Some(f);
             continue;
         }
         links(line, &mut page.outlinks, &mut seen);
-        let text = if let Some(task) = task(trimmed) {
-            let text = task.1.to_string();
-            page.tasks.push(Task {
-                line: i,
-                text: text.clone(),
-                status: task.0,
-            });
-            text
-        } else {
-            strip_marker(trimmed).to_string()
+        let hashes = trimmed.chars().take_while(|&c| c == '#').count();
+        if (1..=6).contains(&hashes) && trimmed[hashes..].starts_with(' ') {
+            section = Some(trimmed[hashes..].trim().to_string());
+            open.clear();
+        }
+        let indent: usize = line[..line.len() - trimmed.len()]
+            .chars()
+            .map(|c| if c == '\t' { 4 } else { 1 })
+            .sum();
+        let item = strip_list_marker(trimmed).map(|rest| (task(trimmed), rest));
+        let text = match item {
+            Some((checkbox, rest)) => {
+                while open.last().is_some_and(|(at, _)| *at >= indent) {
+                    open.pop();
+                }
+                let (status, text) = match checkbox {
+                    Some((c, t)) => (Some(c), t),
+                    None => (None, rest.trim()),
+                };
+                let entry = list_item(i, text, status, open.last().map(|(_, l)| *l), &section);
+                open.push((indent, i));
+                if entry.is_task {
+                    page.tasks.push(entry.clone());
+                }
+                page.lists.push(entry);
+                text.to_string()
+            }
+            None => {
+                // Text that isn't indented under an item ends the list.
+                if !trimmed.is_empty() && indent == 0 {
+                    open.clear();
+                }
+                trimmed.to_string()
+            }
         };
         inline_fields(&text, &mut page.fields);
+    }
+}
+
+/// A list item at line `line` (`status`: its checkbox's, if it's a task).
+fn list_item(
+    line: usize,
+    text: &str,
+    status: Option<char>,
+    parent: Option<usize>,
+    section: &Option<String>,
+) -> Task {
+    let mut fields = Vec::new();
+    inline_fields(text, &mut fields);
+    let annotated = !fields.is_empty();
+    for (emoji, key) in EMOJI_DATES {
+        if let Some(at) = text.find(emoji) {
+            let after = text[at + emoji.len()..].trim_start();
+            if let Some(d) = after.get(..10).and_then(parse_date) {
+                fields.push((key.to_string(), Value::Date(d)));
+            }
+        }
+    }
+    let line_text = vec![text.to_string()];
+    let mut outlinks = Vec::new();
+    links(text, &mut outlinks, &mut HashSet::new());
+    let trimmed = text.trim_end();
+    let block_id = trimmed
+        .rsplit_once(" ^")
+        .map(|(_, id)| id)
+        .filter(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+        .map(String::from);
+    Task {
+        line,
+        text: text.to_string(),
+        status: status.unwrap_or(' '),
+        is_task: status.is_some(),
+        parent,
+        section: section.clone(),
+        tags: tags::extract(&line_text)
+            .into_iter()
+            .map(|t| format!("#{t}"))
+            .collect(),
+        outlinks,
+        block_id,
+        fields,
+        annotated,
     }
 }
 
@@ -269,10 +440,6 @@ fn strip_list_marker(line: &str) -> Option<&str> {
         .then(|| &line[digits..])
         .and_then(|r| r.strip_prefix(['.', ')']))
         .and_then(|r| r.strip_prefix(' '))
-}
-
-fn strip_marker(line: &str) -> &str {
-    strip_list_marker(line).unwrap_or(line)
 }
 
 /// Link targets in a line: `[[Note]]`, `![[Note]]`, `[text](note.md)`.

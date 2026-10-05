@@ -312,7 +312,7 @@ dependencies = [
 
 [[package]]
 name = "blackglass"
-version = "0.76.1"
+version = "0.77.1"
 dependencies = [
  "boa_engine",
  "chrono",

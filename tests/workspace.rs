@@ -1530,6 +1530,11 @@ const RESULTS: &[(&str, &str)] = &[
     ("Books/Emma.md", "# Emma"),
     ("pic.png", "not really a picture"),
     (".blackglass/plugins.toml", ALL_PLUGINS),
+    // Enter on a task opens it at its line (not checks it off).
+    (
+        ".blackglass/plugins/dataview/settings.toml",
+        "task_click = \"open\"\n",
+    ),
 ];
 
 fn view_mode(app: &mut App) {
@@ -5711,7 +5716,7 @@ fn a_folder_template_keeps_its_cursor_with_an_id_in_the_properties() {
 /// Ticks (the main loop when idle) until `done` holds (a background job
 /// finished).
 fn ticks_until(app: &mut App, done: impl Fn(&App) -> bool) {
-    for _ in 0..200 {
+    for _ in 0..500 {
         if done(app) {
             return;
         }
@@ -7163,4 +7168,125 @@ fn citations_insert_cite_and_open_literature_notes() {
     typing(&mut app, "dune");
     key(&mut app, KeyCode::Enter);
     assert_eq!(cursor_line(&app), "[[@herbert1965]]");
+}
+
+/// A vault with Dataview and these notes (and its settings).
+fn dv_app(name: &str, settings: &str, files: &[(&str, &str)]) -> App {
+    let mut all = files.to_vec();
+    all.push((
+        ".blackglass/plugins.toml",
+        "installed = [\"dataview\"]\nenabled = [\"dataview\"]\n",
+    ));
+    all.push((".blackglass/plugins/dataview/settings.toml", settings));
+    App::new(Vault::open(&vault(name, &all)).unwrap())
+}
+
+#[test]
+fn dataview_inline_queries_show_their_values() {
+    let mut app = dv_app(
+        "dv-inline",
+        "",
+        &[
+            (
+                "Note.md",
+                "top\nName: `= this.file.name`, double: `= [[Other]].rating * 2`, js: `$= dv.current().file.name.length`\nend",
+            ),
+            ("Other.md", "rating:: 4"),
+        ],
+    );
+    app.open(&note(&app, "Note.md"));
+    let rows = screen(&mut app, 100, 10);
+    assert!(
+        find(&rows, "Name: Note, double: 8, js: 4").is_some(),
+        "{rows:#?}"
+    );
+    // On the line being edited, as written.
+    key(&mut app, KeyCode::Down);
+    let rows = screen(&mut app, 100, 10);
+    assert!(find(&rows, "`= this.file.name`").is_some(), "{rows:#?}");
+}
+
+#[test]
+fn dataview_tasks_are_checked_off_from_results() {
+    let mut app = dv_app(
+        "dv-check",
+        "",
+        &[
+            ("Q.md", "top\n```dataview\nTASK FROM \"Todo\"\n```"),
+            ("Todo.md", "- [ ] one\n- [x] two"),
+        ],
+    );
+    app.open(&note(&app, "Q.md"));
+    view_mode(&mut app);
+    screen(&mut app, 100, 20);
+    // The page, then its tasks: Tab, Tab to the first task.
+    key(&mut app, KeyCode::Tab);
+    key(&mut app, KeyCode::Tab);
+    key(&mut app, KeyCode::Enter);
+    let todo = note(&app, "Todo.md");
+    assert_eq!(
+        fs::read_to_string(&todo).unwrap(),
+        "- [x] one\n- [x] two\n",
+        "{}",
+        app.message
+    );
+    assert_eq!(active_path(&app), Some(note(&app, "Q.md")), "it stays here");
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(
+        fs::read_to_string(&todo).unwrap(),
+        "- [ ] one\n- [x] two\n",
+        "and back"
+    );
+    // With completion tracking, the date it was done.
+    let mut app = dv_app(
+        "dv-check-dates",
+        "completion_tracking = true\n",
+        &[
+            ("Q.md", "top\n```dataview\nTASK FROM \"Todo\"\n```"),
+            ("Todo.md", "- [ ] one"),
+        ],
+    );
+    app.open(&note(&app, "Q.md"));
+    view_mode(&mut app);
+    screen(&mut app, 100, 20);
+    key(&mut app, KeyCode::Tab);
+    key(&mut app, KeyCode::Tab);
+    key(&mut app, KeyCode::Enter);
+    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+    assert_eq!(
+        fs::read_to_string(note(&app, "Todo.md")).unwrap(),
+        format!("- [x] one ✅ {today}\n")
+    );
+}
+
+#[test]
+fn dataview_results_follow_unsaved_edits() {
+    let mut app = dv_app(
+        "dv-live",
+        "",
+        &[(
+            "Note.md",
+            "rating:: 1\n\n```dataview\nLIST rating WHERE rating\n```",
+        )],
+    );
+    let path = note(&app, "Note.md");
+    app.open(&path);
+    let rows = screen(&mut app, 80, 10);
+    assert!(find(&rows, "Note: 1").is_some(), "{rows:#?}");
+    key(&mut app, KeyCode::End);
+    key(&mut app, KeyCode::Backspace);
+    typing(&mut app, "5");
+    app.tick();
+    let rows = screen(&mut app, 80, 10);
+    assert!(find(&rows, "Note: 5").is_some(), "before saving: {rows:#?}");
+    assert!(
+        fs::read_to_string(&path).unwrap().starts_with("rating:: 1"),
+        "not saved"
+    );
+    // Closed without saving: the results go back.
+    ctrl(&mut app, 'w');
+    key(&mut app, KeyCode::Char('n'));
+    app.open(&path);
+    let rows = screen(&mut app, 80, 10);
+    assert!(find(&rows, "Note: 1").is_some(), "{rows:#?}");
 }

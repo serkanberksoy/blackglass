@@ -1,6 +1,6 @@
 [package]
 name = "blackglass"
-version = "0.76.1"
+version = "0.77.1"
 edition = "2024"
 rust-version = "1.88"
 description = "A note vault in the terminal, with mdedit as its editor"

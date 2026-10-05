@@ -1,6 +1,6 @@
 # Version history
 
-Current version: **0.76.1**
+Current version: **0.77.1**
 
 ## Versioning rules
 
@@ -26,6 +26,61 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 0.77.1 (2026-10-06)
+
+### Added
+- Dataview examples in `example_vault/`: `Dataview/Query language`
+  (grouping, flattening, order of commands, expressions, functions),
+  `Dataview/Tasks and lists` (emoji dates, checking off, subtasks, list
+  items), `Dataview/Dates and durations` (and a calendar),
+  `Dataview/Inline queries`, `JavaScript/Dataview extras` (swizzling,
+  `dv.io.csv` on `Data/reading-log.csv`, `dv.view` with `Data/views/`,
+  Luxon, Markdown). Three more books with genres, pages and read dates.
+  `tests/examples.rs` also renders every inline query.
+
+### Fixed
+- `FLATTEN` of an empty list drops the row (it kept one with nothing).
+- List items have their `section`, as tasks do.
+- DataviewJS pages have every `file.*` field the queries have
+  (`etags`, `aliases`, `lists`, `frontmatter` …).
+- Tests that wait for background work (the watcher) allow 10 s, not 4
+  (they could time out on a busy machine).
+
+## 0.77.0 (2026-10-06)
+
+### Added
+- **W-42 Dataview, complete** (every gap in
+  `requirements/dataview_requirements.md`, DV-04 … DV-47):
+  - The query language: commands run in the order written; `GROUP BY …
+    AS` (with `rows` and `rows.file.link` swizzling) and `FLATTEN … AS`;
+    `LIST WITHOUT ID`; `FROM outgoing([[Note]])` and `FROM [[]]`;
+    `CALENDAR date-field` (a month grid with a `•` on each day that has
+    notes, and the notes below it).
+  - Expressions: `%`, durations (`dur(1 day)`, `date(today) -
+    dur(1 month)`, date − date), list and object literals, indexing
+    (`list[0]`, `obj.key`, `[[Note]].field`), lambdas (`(x) => …`), and
+    about 40 more functions (lists, text with regular expressions,
+    numbers, dates, `meta`, `display` …).
+  - Data: list items and the remaining task fields (`children`, `parent`,
+    `section`, `tags`, `outlinks`, `blockId`, `fullyCompleted` …), task
+    emoji dates (✅ 📅 ➕ 🛫 ⏳), `file.aliases`, `file.lists`,
+    `file.frontmatter`, `file.starred` (Bookmarks), `file.day` from
+    `yyyymmdd` names.
+  - In the note: inline queries (`` `= expr` ``, and `` `$= js` `` when
+    JavaScript is on); `TASK` results check tasks off (Enter or a click;
+    a ✅ date with completion tracking; a setting opens the task
+    instead); results follow unsaved edits.
+  - DataviewJS: swizzling (`dv.pages().file.name`), `dv.io.load` /
+    `dv.io.csv` and `dv.view` (files inside the vault only, read-only),
+    `dv.luxon.DateTime`, `dv.markdownTable` / `markdownList` /
+    `markdownTaskList`.
+- `example_vault/Dataview.md`: grouping, flattening, a calendar, inline
+  queries.
+
+### Changed
+- W-05 and W-20 are done: watching (W-29) and clicks in the text (W-34)
+  were their missing parts.
 
 ## 0.76.1 (2026-10-06)
 

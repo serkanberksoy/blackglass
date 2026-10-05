@@ -1,6 +1,7 @@
 //! The example vault's examples keep working: every `dataview` and
-//! `dataviewjs` block renders without an error, and every template renders
-//! (with the default answers to its questions).
+//! `dataviewjs` block and every inline query (`` `= …` ``, `` `$= …` ``)
+//! renders without an error, and every template renders (with the default
+//! answers to its questions).
 
 use std::cell::RefCell;
 use std::path::Path;
@@ -72,6 +73,59 @@ fn every_dataview_block_in_the_example_vault_renders() {
         }
     }
     assert!(checked >= 15, "only {checked} blocks");
+}
+
+/// The inline queries in `lines`, outside code blocks: (opening, code).
+fn inline_queries(lines: &[String]) -> Vec<(&'static str, String)> {
+    let mut found = Vec::new();
+    let mut fence = false;
+    for line in lines {
+        if line.trim_start().starts_with("```") {
+            fence = !fence;
+            continue;
+        }
+        if fence {
+            continue;
+        }
+        for (i, part) in line.split('`').enumerate() {
+            // Odd parts are inside backticks.
+            if i % 2 == 0 {
+                continue;
+            }
+            if let Some(code) = part.strip_prefix("$=") {
+                found.push(("`$=", code.to_string()));
+            } else if let Some(code) = part.strip_prefix('=') {
+                found.push(("`=", code.to_string()));
+            }
+        }
+    }
+    found
+}
+
+#[test]
+fn every_inline_query_in_the_example_vault_renders() {
+    let vault = example_vault();
+    let mut plugins = Plugins::for_vault(&vault);
+    let mut checked = 0;
+    for note in vault
+        .notes
+        .iter()
+        .filter(|n| !n.rel_name().starts_with("Templates"))
+    {
+        plugins.note_opened(&note.path, &vault);
+        for (open, code) in inline_queries(&note.lines) {
+            let shown = plugins
+                .render_span(open, &code)
+                .unwrap_or_else(|| panic!("{}: {open}{code}` shows nothing", note.rel_name()));
+            assert!(
+                !shown.starts_with('⚠'),
+                "{}: {open}{code}` → {shown}",
+                note.rel_name()
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked >= 12, "only {checked} inline queries");
 }
 
 #[test]

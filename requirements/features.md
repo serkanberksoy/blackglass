@@ -17,7 +17,7 @@ the milestone **Wrapper** belong here; their mdedit ID is in the Notes.
 | W-02 | File explorer: folders open and close (Enter, →, ←, click) | ✅ | M1 | `sidebar::folders_open_and_close_and_their_rows_take_the_folder_color` | |
 | W-03 | Rainbow folders: each top-level folder has a color, tinted row, and a bar down its contents | ✅ | M1 | `workspace::the_screen_is_laid_out_like_obsidian` | 8 colors, repeating |
 | W-04 | Sort files: A→Z, Z→A, newest, oldest (`s`) | ✅ | M1 | `sidebar::sorting_cycles_and_keeps_folder_colors` | Folders stay by name |
-| W-05 | Index kept up to date: a saved note updates search and tags; F5 scans again | 🟡 | M1 | `workspace::saving_a_note_updates_tags_and_search` | No file watching yet (W-29) |
+| W-05 | Index kept up to date: a saved note updates search and tags; F5 scans again | ✅ | M1 | `workspace::saving_a_note_updates_tags_and_search` | Changes made elsewhere: W-29 |
 
 ## Tabs and the editor
 
@@ -47,7 +47,7 @@ the milestone **Wrapper** belong here; their mdedit ID is in the Notes.
 |----|---------|-----|-----------|------|-------|
 | W-18 | New note (Ctrl+N) in the selected folder; `Untitled N`; `/` makes folders | ✅ | M1 | `workspace::new_notes_go_to_the_selected_folder` | |
 | W-19 | Save As within the vault (Ctrl+Alt+S) | ✅ | M1 | `workspace::save_as_moves_the_note_within_the_vault` | Refuses to overwrite |
-| W-20 | Mouse: click files, results, tags, panels, tabs; wheel scrolls | 🟡 | M1 | `workspace::the_mouse_opens_files_switches_tabs_and_panels` | A click in the text doesn't place the cursor (W-34) |
+| W-20 | Mouse: click files, results, tags, panels, tabs; wheel scrolls | ✅ | M1 | `workspace::the_mouse_opens_files_switches_tabs_and_panels` | Clicks in the text: W-34 |
 | W-21 | Any screen size draws; ASCII and 16-color fallbacks | ✅ | M1 | `workspace::every_screen_size_draws_without_panicking` | Also `theme::colors_fit_the_terminal` |
 
 ## Commands and plugins (M2)
@@ -59,7 +59,7 @@ the milestone **Wrapper** belong here; their mdedit ID is in the Notes.
 | W-39 | Plugins (the settings' Plugins page since 0.18.0): install / uninstall, enable / disable, details | ✅ | M2 | `workspace::plugins_are_installed_and_uninstalled_in_the_plugins_window` | Also "Open plugins" in the palette |
 | W-40 | Plugin structure: manifest, load / unload, commands in the palette | ✅ | M2 | `plugins::install_enable_and_the_state_file` | Compiled in; state in `.blackglass/plugins.toml` |
 | W-41 | Code block processors: a plugin renders its ```` ```lang ```` blocks in the editor | ✅ | M2 | `workspace::dataview_results_follow_saved_changes_and_plugin_state` | mdedit 2.2 `CodeBlockProcessor` |
-| W-42 | Dataview: `LIST`, `TABLE`, `TASK` queries in ```` ```dataview ```` blocks | 🟡 | M2 | `workspace::a_dataview_block_shows_its_query_result` | What's missing, with IDs: `requirements/dataview_requirements.md` (DV-xx) |
+| W-42 | Dataview: `LIST`, `TABLE`, `TASK`, `CALENDAR` queries in ```` ```dataview ```` blocks, inline queries, the whole query language | ✅ | M2 | `workspace::a_dataview_block_shows_its_query_result` | Also `eval::groups_and_flattening`, `workspace::dataview_inline_queries_show_their_values`, `workspace::dataview_tasks_are_checked_off_from_results`; each piece with its test: `requirements/dataview_requirements.md` (DV-xx) |
 | W-43 | Dataview: `FROM` folders / tags / links, `WHERE`, `SORT`, `LIMIT` | ✅ | M2 | `eval::from_folders_tags_and_links` | Also `eval::where_sort_and_limit`, `query::sources_combine` |
 | W-44 | Dataview: fields from frontmatter, `key:: value`, and `file.*` | ✅ | M2 | `index::frontmatter_and_inline_fields` | Also `index::file_data_tasks_and_links`, `eval::functions` |
 | W-45 | Templater: insert a template, create a note from one, run the commands in a note | ✅ | M2 | `workspace::templater_inserts_a_template_at_the_cursor` | Also `workspace::templater_creates_a_note_from_a_template`, `workspace::templater_runs_the_commands_in_the_active_note` |

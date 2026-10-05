@@ -318,6 +318,8 @@ pub struct App {
     rendered: bool,
     /// The file or folder "Move" asked about.
     moving: Option<PathBuf>,
+    /// The unsaved text last put in the index: its note and a hash.
+    synced: Option<(PathBuf, u64)>,
     /// Watches the vault for changes made elsewhere.
     watcher: crate::watch::Watcher,
     /// The session as last written (`.blackglass/workspace.json`).
@@ -406,6 +408,7 @@ impl App {
             pending_id: None,
             rendered: false,
             moving: None,
+            synced: None,
             watcher: crate::watch::Watcher::start(&vault_root, crate::watch::INTERVAL),
             session_saved: String::new(),
             renaming: None,
@@ -706,6 +709,48 @@ impl App {
         }
     }
 
+    /// Puts the active note's unsaved text in the vault's index (results,
+    /// backlinks and search follow edits before they're saved), when it
+    /// changed since the last time.
+    fn sync_unsaved(&mut self) {
+        let Some(view) = self.view().filter(|v| v.is_dirty()) else {
+            return;
+        };
+        let Some(path) = view.path.clone() else {
+            return;
+        };
+        let text = view.editor.to_text();
+        let stamp = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            text.hash(&mut h);
+            h.finish()
+        };
+        if self.synced.as_ref() == Some(&(path.clone(), stamp)) {
+            return;
+        }
+        self.synced = Some((path.clone(), stamp));
+        self.index_text(&path, &text);
+    }
+
+    /// The index has the note at `path` as `text` (saved or not).
+    fn index_text(&mut self, path: &Path, text: &str) {
+        if self
+            .vault
+            .note(path)
+            .is_some_and(|n| n.lines == crate::vault::split_lines(text))
+        {
+            return;
+        }
+        if Rc::make_mut(&mut self.vault).update_note(path, text) {
+            self.backlinks_cache = None;
+            self.sidebar.update_search(&self.vault);
+            let mut plugins = self.plugins.borrow_mut();
+            plugins.queries.set_vault(&self.vault);
+            plugins.note_changed(path, &self.vault);
+        }
+    }
+
     /// Creates the note `name` (`.md` added; `/` makes folders) in `folder`
     /// and opens it. An empty name picks `Untitled`, `Untitled 1` …; an
     /// existing note is just opened.
@@ -888,7 +933,15 @@ impl App {
         if i >= self.tabs.len() {
             return;
         }
-        self.tabs.remove(i);
+        let view = self.tabs.remove(i);
+        // Its unsaved changes are gone: the index goes back to the file.
+        if view.is_dirty()
+            && let Some(path) = view.path.as_deref()
+            && let Ok(text) = std::fs::read_to_string(path)
+        {
+            self.index_text(path, &text);
+            self.synced = None;
+        }
         if self.active > i || self.active >= self.tabs.len() {
             self.active = self.active.saturating_sub(1);
         }
@@ -1567,6 +1620,7 @@ impl App {
     /// if anything happened (the screen needs drawing again).
     pub fn tick(&mut self) -> bool {
         self.save_session();
+        self.sync_unsaved();
         let outside = self.outside_changes();
         let effects = self.with_context(|ctx| self.plugins.borrow_mut().tick(ctx));
         let happened = outside || !effects.is_empty();
