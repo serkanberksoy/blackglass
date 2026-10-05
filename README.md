@@ -1,11 +1,41 @@
 # blackglass
 
-**A note vault in the terminal.** A vault is a folder of Markdown notes.
-blackglass shows it with a sidebar on the left with the file explorer, vault search and tags, and your notes in tabs
-on the right, each one a live-preview editor. Written in Rust with
-[ratatui](https://ratatui.rs); the editor is mdedit, a terminal Markdown
-editor embedded as a library (a separate repository, checked out next to
-this one).
+**Your second brain, in the terminal. Free, open source, and fast.**
+
+blackglass is a full note-taking workspace that runs where you already
+work: the terminal. Point it at a folder of Markdown files and you get a
+file explorer, vault-wide search, tags, backlinks and tabs, with every
+note a live-preview editor: headings, tables, callouts, tasks, images
+and embeds rendered as you type, the Markdown right there when you
+need it.
+
+- **Free, forever.** MIT licensed, no account, no subscription, no cloud.
+  It never phones home; it only goes online when you ask it to (a Git
+  sync, a web request in a template).
+- **Your notes stay yours.** Plain Markdown files in a folder you choose.
+  Open them in any editor, sync them with anything, keep them in Git.
+  Nothing is locked in a database.
+- **Fast, really.** Written in Rust. On a vault of 5,000 notes it opens
+  in about a seventh of a second, answers a keystroke (redrawn screen
+  included) in under 3 ms, and searches every note in 13 ms. One 14 MB
+  program, no runtime, no browser engine.
+- **Anywhere you have a shell.** Over SSH on a server, in a tmux pane, on
+  a laptop with no window manager. The keyboard drives everything (every
+  command can have your own keys), and the mouse works too.
+- **Linked thinking built in.** `[[Links]]` that find notes anywhere,
+  backlinks and unlinked mentions, block and heading links, embeds,
+  properties, nested tags, bookmarks, a daily note, and a full
+  Zettelkasten toolkit: unique IDs, Folgezettel sequences, breadcrumbs,
+  literature notes from your Zotero library.
+- **Plugins included, not hunted for.** Queries over your notes
+  (Dataview, DataviewJS), templates with JavaScript (Templater), tasks
+  with due dates and recurrence, database views (Bases), Git backup,
+  diagrams, advanced tables, all built in and switched on when you want
+  them.
+
+Written in Rust with [ratatui](https://ratatui.rs); the editor is mdedit,
+a terminal Markdown editor embedded as a library (a separate repository,
+checked out next to this one).
 
 ```bash
 blackglass                      # choose a vault: a recent one, or any folder (a new one is made)
