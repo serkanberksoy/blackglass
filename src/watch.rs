@@ -47,8 +47,10 @@ impl Watcher {
         let stop = Arc::new(AtomicBool::new(false));
         let stopped = Arc::clone(&stop);
         let root = root.to_path_buf();
+        // Now, not when the thread first runs: a change made meanwhile is
+        // a change.
+        let mut before = snapshot(&root);
         std::thread::spawn(move || {
-            let mut before = snapshot(&root);
             loop {
                 std::thread::sleep(interval);
                 if stopped.load(Ordering::Relaxed) {
@@ -129,6 +131,27 @@ fn diff(before: &Snapshot, now: &Snapshot) -> Vec<Change> {
 mod tests {
     use super::*;
     use crate::vault::tests::{scratch, write};
+
+    #[test]
+    fn a_change_right_after_starting_is_seen() {
+        // The thread may start late: what it compares with is the vault
+        // when watching began, not when the thread first looked.
+        for round in 0..20 {
+            let dir = scratch(&format!("watch-start-{round}"));
+            write(&dir, &[("A.md", "a")]);
+            let watcher = Watcher::start(&dir, Duration::from_millis(5));
+            std::fs::write(dir.join("A.md"), "changed").unwrap();
+            let mut seen = Vec::new();
+            for _ in 0..200 {
+                seen.extend(watcher.poll());
+                if !seen.is_empty() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert_eq!(seen, [Change::Modified(dir.join("A.md"))], "round {round}");
+        }
+    }
 
     #[test]
     fn added_removed_and_modified_files_are_seen() {

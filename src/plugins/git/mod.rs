@@ -502,18 +502,28 @@ fn keep_session_out(root: &Path) {
         return;
     }
     let exclude = git.join("info").join("exclude");
-    let pattern = format!("/{}", crate::session::FILE);
+    let file = crate::session::FILE;
+    // The file, and its copy while it's being saved (`.workspace.json.…
+    // .tmp` beside it), which `git add` could see and then lose.
+    let (dir, name) = file.rsplit_once('/').unwrap_or(("", file));
+    let patterns = [format!("/{file}"), format!("/{dir}/.{name}.*.tmp")];
     let text = std::fs::read_to_string(&exclude).unwrap_or_default();
-    if text.lines().any(|l| l.trim() == pattern) {
+    let missing: Vec<&String> = patterns
+        .iter()
+        .filter(|p| !text.lines().any(|l| l.trim() == p.as_str()))
+        .collect();
+    if missing.is_empty() {
         return;
     }
     let mut new = text;
     if !new.is_empty() && !new.ends_with('\n') {
         new.push('\n');
     }
-    new.push_str(&format!(
-        "# blackglass: this computer's open tabs\n{pattern}\n"
-    ));
+    new.push_str("# blackglass: this computer's open tabs\n");
+    for p in missing {
+        new.push_str(p);
+        new.push('\n');
+    }
     if let Some(dir) = exclude.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
@@ -2276,9 +2286,14 @@ mod tests {
         let text = std::fs::read_to_string(dir.join(".git/info/exclude")).unwrap();
         assert!(text.starts_with("*.tmp\n"), "{text}");
         assert_eq!(
-            text.matches("/.blackglass/workspace.json").count(),
+            text.matches("/.blackglass/workspace.json\n").count(),
             1,
             "{text}"
+        );
+        assert_eq!(
+            text.matches("/.blackglass/.workspace.json.*.tmp\n").count(),
+            1,
+            "its copy while it's saved too: {text}"
         );
     }
 }

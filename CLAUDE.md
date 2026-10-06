@@ -171,6 +171,11 @@ cargo test --test project            # versions, feature ↔ test mapping, --hel
   group. Unsaved edits reach the index from `App::tick`
   (`sync_unsaved`). DataviewJS's `dv.io` / `dv.view` are the one place a
   script reads files: only inside the vault (`js::load`), read-only.
+- Typing suggestions share one popup, asked in order: tags and
+  properties (`tag_suggest`), dates in words (`nldates`, core), then the
+  plugins'. A suggestion can put in other text with Shift+Enter
+  (`Suggestions::alts`) and tell its plugin it was chosen
+  (`Effect::RowAction` → `Plugin::row_action`).
 - New notes the user makes go through `App::create_new_note`, which gives
   them a note ID when the vault's Notes settings ask for one
   (`note_ids`, `.blackglass/notes.toml`); only notes with names of their

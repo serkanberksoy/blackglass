@@ -3,7 +3,7 @@
 //! (`YYYY-MM-DD`, `dddd, MMMM Do`, `[week] WW`), ISO 8601 offsets
 //! (`P1W`, `-P1M`), and reading a date back with a format.
 
-use chrono::{Datelike, Duration, Months, NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+use chrono::{Datelike, Duration, Months, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Weekday};
 
 /// moment.js tokens, longest first so `MMMM` wins over `MM`.
 const TOKENS: [&str; 40] = [
@@ -12,8 +12,66 @@ const TOKENS: [&str; 40] = [
     "hh", "h", "mm", "m", "ss", "s", "A", "a", "X", "x",
 ];
 
+/// How weeks are counted for the locale tokens (`gggg`, `ww`, `w`):
+/// the day they start on, and how many days of January the first week
+/// has at least (ISO: Monday, 4; the US: Sunday, 1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Week {
+    pub start: Weekday,
+    pub min_days: u32,
+}
+
+impl Week {
+    pub const ISO: Week = Week {
+        start: Weekday::Mon,
+        min_days: 4,
+    };
+
+    /// Weeks starting on `start`: ISO for Monday, else the first week is
+    /// the one with January 1st.
+    pub fn starting(start: Weekday) -> Week {
+        match start {
+            Weekday::Mon => Week::ISO,
+            start => Week { start, min_days: 1 },
+        }
+    }
+
+    /// The first day of the week `day` is in.
+    pub fn start_of(self, day: NaiveDate) -> NaiveDate {
+        let back =
+            (day.weekday().num_days_from_monday() + 7 - self.start.num_days_from_monday()) % 7;
+        day - Duration::days(i64::from(back))
+    }
+}
+
+/// The week-year and week number of `day`, weeks counted as `week` says.
+pub fn week_of(day: NaiveDate, week: Week) -> (i32, u32) {
+    let first = |year: i32| {
+        let jan =
+            NaiveDate::from_ymd_opt(year, 1, week.min_days.clamp(1, 7)).expect("a day in January");
+        week.start_of(jan)
+    };
+    let start = week.start_of(day);
+    let year = if start >= first(day.year() + 1) {
+        day.year() + 1
+    } else if start < first(day.year()) {
+        day.year() - 1
+    } else {
+        day.year()
+    };
+    let n = (start - first(year)).num_days() / 7 + 1;
+    (year, u32::try_from(n).expect("a week number is positive"))
+}
+
 /// `date` in the moment.js `format`. Text in `[brackets]` is kept as is.
+/// Locale weeks (`gggg`, `ww`) are ISO weeks.
 pub fn format(date: &NaiveDateTime, format: &str) -> String {
+    format_in(date, format, Week::ISO)
+}
+
+/// `date` in the moment.js `format`, locale weeks (`gggg`, `ww`, `w`,
+/// `e`) counted as `week` says.
+pub fn format_in(date: &NaiveDateTime, format: &str, week: Week) -> String {
     let mut out = String::new();
     let mut rest = format;
     'outer: while let Some(c) = rest.chars().next() {
@@ -25,7 +83,7 @@ pub fn format(date: &NaiveDateTime, format: &str) -> String {
         }
         for token in TOKENS {
             if let Some(r) = rest.strip_prefix(token) {
-                out.push_str(&token_value(date, token));
+                out.push_str(&token_value(date, token, week));
                 rest = r;
                 continue 'outer;
             }
@@ -36,12 +94,13 @@ pub fn format(date: &NaiveDateTime, format: &str) -> String {
     out
 }
 
-fn token_value(d: &NaiveDateTime, token: &str) -> String {
+fn token_value(d: &NaiveDateTime, token: &str, week: Week) -> String {
     let hour12 = match d.hour() % 12 {
         0 => 12,
         h => h,
     };
     let iso = d.iso_week();
+    let (week_year, week_number) = week_of(d.date(), week);
     match token {
         "YYYY" => format!("{:04}", d.year()),
         "YY" => format!("{:02}", d.year().rem_euclid(100)),
@@ -60,14 +119,23 @@ fn token_value(d: &NaiveDateTime, token: &str) -> String {
         "ddd" => d.format("%a").to_string(),
         "dd" => d.format("%a").to_string()[..2].to_string(),
         // Day of the week, Sunday = 0 (moment's `d`).
-        "d" | "e" => d.weekday().num_days_from_sunday().to_string(),
+        "d" => d.weekday().num_days_from_sunday().to_string(),
+        // Day of the locale's week, its first day = 0 (Sunday for ISO, as
+        // moment's English locale).
+        "e" if week == Week::ISO => d.weekday().num_days_from_sunday().to_string(),
+        "e" => ((d.weekday().num_days_from_monday() + 7 - week.start.num_days_from_monday()) % 7)
+            .to_string(),
         // ISO day of the week, Monday = 1.
         "E" => d.weekday().number_from_monday().to_string(),
-        "GGGG" | "gggg" => format!("{:04}", iso.year()),
-        "GG" | "gg" => format!("{:02}", iso.year().rem_euclid(100)),
-        "WW" | "ww" => format!("{:02}", iso.week()),
+        "GGGG" => format!("{:04}", iso.year()),
+        "GG" => format!("{:02}", iso.year().rem_euclid(100)),
+        "WW" => format!("{:02}", iso.week()),
         "Wo" => ordinal(iso.week()),
-        "W" | "w" => iso.week().to_string(),
+        "W" => iso.week().to_string(),
+        "gggg" => format!("{week_year:04}"),
+        "gg" => format!("{:02}", week_year.rem_euclid(100)),
+        "ww" => format!("{week_number:02}"),
+        "w" => week_number.to_string(),
         "HH" => format!("{:02}", d.hour()),
         "H" => d.hour().to_string(),
         "hh" => format!("{hour12:02}"),
@@ -237,6 +305,38 @@ pub fn weekday(date: NaiveDateTime, weekday: i64) -> NaiveDateTime {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn locale_weeks() {
+        let d = |y, m, dd| {
+            NaiveDate::from_ymd_opt(y, m, dd)
+                .unwrap()
+                .and_hms_opt(0, 0, 0)
+                .unwrap()
+        };
+        let us = Week {
+            start: chrono::Weekday::Sun,
+            min_days: 1,
+        };
+        // 1 January 2026 is a Thursday.
+        assert_eq!(format_in(&d(2026, 1, 4), "gggg-[W]ww e", us), "2026-W02 0");
+        assert_eq!(format_in(&d(2025, 12, 28), "gggg-[W]ww", us), "2026-W01");
+        assert_eq!(
+            format_in(&d(2026, 1, 4), "gggg-[W]ww", Week::ISO),
+            "2026-W01"
+        );
+        assert_eq!(
+            format(&d(2026, 1, 4), "gggg-[W]ww"),
+            "2026-W01",
+            "ISO by default"
+        );
+        assert_eq!(
+            format_in(&d(2026, 1, 4), "GGGG-[W]WW", us),
+            "2026-W01",
+            "ISO tokens stay ISO"
+        );
+        assert_eq!(week_of(d(2026, 1, 4).date(), us), (2026, 2));
+    }
+
     use super::*;
 
     fn at(y: i32, m: u32, d: u32, h: u32, min: u32) -> NaiveDateTime {

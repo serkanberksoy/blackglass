@@ -19,6 +19,8 @@ pub enum Page {
     Editor,
     /// The vault's notes: note IDs.
     Notes,
+    /// Natural language dates.
+    Dates,
     /// Every command's keys.
     Shortcuts,
     /// The plugins: install, uninstall, enable, disable.
@@ -153,6 +155,11 @@ impl App {
                 page: Page::Plugins,
                 title: "Plugins".into(),
             },
+            NavItem {
+                group: OPTIONS,
+                page: Page::Dates,
+                title: "Dates".into(),
+            },
         ];
         let plugins = self.plugins.borrow();
         for (i, status) in plugins.statuses().iter().enumerate() {
@@ -174,6 +181,7 @@ impl App {
         match page {
             Page::Editor => "Editor".into(),
             Page::Notes => "Notes".into(),
+            Page::Dates => "Dates".into(),
             Page::Shortcuts => "Keyboard shortcuts".into(),
             Page::Plugins => "Plugins".into(),
             Page::Plugin(i) => self
@@ -202,6 +210,7 @@ impl App {
         let rows = match page {
             Page::Editor => settings(Target::Editor),
             Page::Notes => settings(Target::Notes),
+            Page::Dates => settings(Target::Dates),
             Page::Plugin(i) => settings(Target::Plugin(i)),
             Page::Shortcuts => self
                 .all_commands()
@@ -414,6 +423,7 @@ impl App {
         let target = match page {
             Page::Plugin(i) => Target::Plugin(i),
             Page::Notes => Target::Notes,
+            Page::Dates => Target::Dates,
             _ => Target::Editor,
         };
         if let Err(e) = self.set_setting(target, setting, value) {

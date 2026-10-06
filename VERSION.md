@@ -1,6 +1,6 @@
 # Version history
 
-Current version: **0.77.1**
+Current version: **0.82.0**
 
 ## Versioning rules
 
@@ -26,6 +26,98 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 0.82.0 (2026-10-06)
+
+### Added
+- **Periodic Notes, the rest** (W-49; PN-05, PN-13, PN-14, PN-20 …
+  PN-22, PN-24, PN-25 in `requirements/periodic_requirements.md`):
+  "Jump forwards / backwards to closest daily note" … for each
+  granularity; template offsets (`{{date+1d:FMT}}`, `{{time+2h:HH:mm}}`)
+  and `{{month:FMT}}`, `{{quarter:FMT}}`, `{{year:FMT}}` (with offsets);
+  weeks that start on Monday, Sunday or Saturday (weekly notes, the
+  calendar, `{{monday}}` …), with locale week numbers (`ww`, `gggg`)
+  that follow; today's daily note at startup; Delete in the calendar
+  deletes a day's note (asked first); calendar sets (`[work/daily]` …:
+  another journal with its own folders and formats; "Add a calendar
+  set", "Switch calendar set"). New settings are in `[general]`.
+
+### Changed
+- `{{date:FMT}}` in a periodic note's template is the note's date at the
+  current time of day (as the original), so `{{date:HH:mm}}` is the
+  time.
+
+## 0.81.0 (2026-10-06)
+
+### Added
+- **W-130 Highlight colors**, as in the original's 1.14: a color emoji at
+  a highlight's start colors it (`==🔴text==`: 🔴 🟠 🟡 🟢 🔵 🟣), the
+  emoji hidden (mdedit 3.14.0, T-07a; named colors, so themes change
+  them). Typing `==` suggests the colors; "Highlight in red" …
+  "Highlight in purple" highlight the selection in that color or recolor
+  the highlight at the cursor; "Remove highlight color".
+
+### Fixed
+- Dataview: a code span starting with `==` (a highlight's marks written
+  as code) is code, not an inline query with an error.
+
+## 0.80.0 (2026-10-06)
+
+### Added
+- **W-129 Emoji Shortcodes** (a plugin, after phibr0's): typing `:` and
+  a shortcode (`:jo`) suggests emoji, the exact one and those starting
+  with it first, recently used before all (a history with a limit,
+  "Clear emoji history"); Enter puts in the emoji, or the shortcode if
+  it isn't to be replaced; shortcodes in the text show as their emoji in
+  the live preview. Not after a letter or digit (`10:30`) or in code.
+  Plugins can act when one of their suggestions is chosen
+  (`Effect::RowAction`). Compared with the original:
+  `requirements/emoji_requirements.md`.
+- `example_vault/Examples/Emoji.md`.
+
+## 0.79.0 (2026-10-06)
+
+### Added
+- **W-128 Natural language dates** (built in, after the community
+  plugin): type `@` and a date in words (`@today`, `@tomorrow`, `@next
+  friday`, `@in 3 days`, `@oct 20`, `@end of month`; `@time…` for times)
+  and it's suggested; Enter puts in a link to that day's note,
+  Shift+Enter keeps the words as its alias (`[[2026-10-07|tomorrow]]`).
+  Commands: "Parse natural language date" (also as a Markdown link, as
+  plain text, a time), "Insert the current time", "Insert the current
+  date and time", "Date picker" (a date in words, with the date it
+  reads). Settings → Dates (the vault's `.blackglass/dates.toml`): date
+  and time formats, separator, week start, trigger, suggestions on/off,
+  links or plain text; "Insert today's date" uses its format. Compared
+  with the plugin: `requirements/nldates_requirements.md`.
+- `example_vault/Examples/Dates.md`.
+
+### Fixed
+- The vault watcher compares with the vault as it was when watching
+  began: a change made just after a vault was opened could be missed
+  (the thread looked first, after the change).
+
+## 0.78.0 (2026-10-06)
+
+### Added
+- **W-127 Task Archiver** (a plugin, after Ivan Lednev's): "Archive tasks
+  in this file" (done tasks, with what's under them, go under an
+  Archived heading; those already archived stay), "… including nested
+  tasks", "Delete tasks in this file", "Archive heading under cursor",
+  "Sort tasks in list under cursor" (items, open tasks, done tasks),
+  "Toggle task done and archive it". Settings: archive to this note, a
+  note of its own or today's daily note; heading and list-item trees
+  from placeholders (`{{date}}`, `{{date:FORMAT}}`, `{{headingChain}}`,
+  `{{sourceFileName}}`, `{{completedDate}}` …: a date
+  tree); text added after tasks; replacing text; newest first or last;
+  only when subtasks are done; any checked status; a task pattern; rules
+  by status, note path and text that move tasks elsewhere or delete
+  them. Compared with the original: `requirements/archiver_requirements.md`.
+- `example_vault/Examples/Task Archiver.md`.
+
+### Fixed
+- Git: the session's copy while it's being saved is kept out of the
+  repository too (`git add` could see it and fail when it was gone).
 
 ## 0.77.1 (2026-10-06)
 

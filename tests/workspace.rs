@@ -7189,7 +7189,7 @@ fn dataview_inline_queries_show_their_values() {
         &[
             (
                 "Note.md",
-                "top\nName: `= this.file.name`, double: `= [[Other]].rating * 2`, js: `$= dv.current().file.name.length`\nend",
+                "top\nName: `= this.file.name`, double: `= [[Other]].rating * 2`, js: `$= dv.current().file.name.length`\nend\nop: `==`",
             ),
             ("Other.md", "rating:: 4"),
         ],
@@ -7199,6 +7199,10 @@ fn dataview_inline_queries_show_their_values() {
     assert!(
         find(&rows, "Name: Note, double: 8, js: 4").is_some(),
         "{rows:#?}"
+    );
+    assert!(
+        find(&rows, "op: ==").is_some() && !rows.iter().any(|r| r.contains('⚠')),
+        "`==` is code, not a query: {rows:#?}"
     );
     // On the line being edited, as written.
     key(&mut app, KeyCode::Down);
@@ -7289,4 +7293,311 @@ fn dataview_results_follow_unsaved_edits() {
     app.open(&path);
     let rows = screen(&mut app, 80, 10);
     assert!(find(&rows, "Note: 1").is_some(), "{rows:#?}");
+}
+
+/// A vault with the Task Archiver enabled, its settings, and these notes.
+fn archiver_app(name: &str, settings: &str, notes: &[(&str, &str)]) -> App {
+    let mut files = vec![
+        (
+            ".blackglass/plugins.toml",
+            "installed = [\"archiver\"]\nenabled = [\"archiver\"]\n",
+        ),
+        (".blackglass/plugins/archiver/settings.toml", settings),
+    ];
+    files.extend_from_slice(notes);
+    App::new(Vault::open(&vault(name, &files)).unwrap())
+}
+
+fn editor_text(app: &App) -> String {
+    app.view().unwrap().editor.lines.join("\n")
+}
+
+#[test]
+fn the_task_archiver_archives_deletes_sorts_and_checks_off() {
+    let mut app = archiver_app(
+        "archiver",
+        "add_metadata = \"false\"\n\n[rule.1]\nstatuses = \">\"\nfile = \"Later\"\n",
+        &[
+            (
+                "Plan.md",
+                "# Work\n- [x] done\n    - its notes\n- [ ] open\n- [>] later\n- [-] cancelled",
+            ),
+            ("List.md", "- [x] a\n- b\n- [ ] c\n\n# Keep\nx\n# Gone\ny"),
+        ],
+    );
+    app.open(&note(&app, "Plan.md"));
+    run_palette(&mut app, "archive tasks in this file");
+    assert_eq!(app.message, "Task Archiver: archived 2 tasks");
+    assert_eq!(
+        editor_text(&app),
+        "# Work\n- [ ] open\n- [-] cancelled\n\n# Archived\n\n- [x] done\n    - its notes\n"
+    );
+    assert_eq!(
+        fs::read_to_string(note(&app, "Later.md")).unwrap(),
+        "# Archived\n\n- [>] later\n",
+        "a rule's task in its own note"
+    );
+    // Check one off and archive it, from the cursor.
+    key(&mut app, KeyCode::Down);
+    run_palette(&mut app, "toggle task done and archive it");
+    assert_eq!(
+        editor_text(&app),
+        "# Work\n- [-] cancelled\n\n# Archived\n\n- [x] done\n    - its notes\n- [x] open\n"
+    );
+    assert_eq!(app.view().unwrap().editor.row, 1, "where the task was");
+    // Sort a list, delete the done tasks, archive a heading.
+    app.open(&note(&app, "List.md"));
+    run_palette(&mut app, "sort tasks in list under cursor");
+    assert!(
+        editor_text(&app).starts_with("- b\n- [ ] c\n- [x] a\n"),
+        "{}",
+        editor_text(&app)
+    );
+    run_palette(&mut app, "delete tasks in this file");
+    assert_eq!(app.message, "Task Archiver: deleted 1 task");
+    for _ in 0..6 {
+        key(&mut app, KeyCode::Down);
+    }
+    run_palette(&mut app, "archive heading under cursor");
+    assert_eq!(
+        editor_text(&app),
+        "- b\n- [ ] c\n\n# Keep\nx\n\n# Archived\n\n## Gone\ny"
+    );
+}
+
+/// A day from today, as `YYYY-MM-DD`.
+fn day_from_today(days: i64) -> String {
+    (chrono::Local::now().date_naive() + chrono::Duration::days(days))
+        .format("%Y-%m-%d")
+        .to_string()
+}
+
+#[test]
+fn dates_in_words_become_links_to_their_days() {
+    let dir = vault("dates", &[("Note.md", "")]);
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "Note.md"));
+    typing(&mut app, "Meet @tom");
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(rows.contains("Tomorrow"), "suggested: {rows}");
+    key(&mut app, KeyCode::Enter);
+    let tomorrow = day_from_today(1);
+    assert_eq!(cursor_line(&app), format!("Meet [[{tomorrow}]]"));
+    // Shift+Enter keeps the words as the link's alias.
+    typing(&mut app, " and @in 3 da");
+    press(&mut app, KeyCode::Enter, KeyModifiers::SHIFT);
+    assert_eq!(
+        cursor_line(&app),
+        format!(
+            "Meet [[{tomorrow}]] and [[{}|in 3 days]]",
+            day_from_today(3)
+        )
+    );
+    // An @ in a word is not a date.
+    key(&mut app, KeyCode::Enter);
+    typing(&mut app, "me@today");
+    assert!(app.plugin_suggest.is_none(), "an e-mail address");
+    // The selection to a date.
+    key(&mut app, KeyCode::Enter);
+    typing(&mut app, "the day after tomorrow");
+    press(&mut app, KeyCode::Home, KeyModifiers::SHIFT);
+    run_palette(&mut app, "parse natural language date");
+    assert_eq!(cursor_line(&app), format!("[[{}]]", day_from_today(2)));
+    key(&mut app, KeyCode::Enter);
+    typing(&mut app, "yesterday");
+    press(&mut app, KeyCode::Home, KeyModifiers::SHIFT);
+    run_palette(&mut app, "parse natural language date as plain text");
+    assert_eq!(cursor_line(&app), day_from_today(-1));
+    // The date picker: a date in words, shown as it's read.
+    key(&mut app, KeyCode::Enter);
+    run_palette(&mut app, "date picker");
+    typing(&mut app, "in a week");
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(
+        rows.contains(&day_from_today(7)),
+        "the date it reads: {rows}"
+    );
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(cursor_line(&app), format!("[[{}]]", day_from_today(7)));
+}
+
+#[test]
+fn dates_follow_their_settings() {
+    let dir = vault(
+        "dates-settings",
+        &[
+            ("Note.md", ""),
+            (
+                ".blackglass/dates.toml",
+                "link = \"false\"\nformat = \"DD.MM.YYYY\"\ntrigger = \"//\"\n",
+            ),
+        ],
+    );
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "Note.md"));
+    typing(&mut app, "@today ");
+    assert!(app.plugin_suggest.is_none(), "another trigger");
+    typing(&mut app, "//tod");
+    key(&mut app, KeyCode::Enter);
+    let today = chrono::Local::now().format("%d.%m.%Y").to_string();
+    assert_eq!(cursor_line(&app), format!("@today {today}"));
+    run_palette(&mut app, "insert today's date");
+    assert!(cursor_line(&app).ends_with(&format!("{today}{today}")));
+    // The settings window has them.
+    app.open_settings_window(blackglass::settings_window::Page::Dates, true);
+    let rows = screen(&mut app, 120, 30).join("\n");
+    assert!(rows.contains("Insert dates as links"), "{rows}");
+}
+
+/// A vault with Emoji Shortcodes enabled and its settings.
+fn emoji_app(name: &str, settings: &str) -> App {
+    let dir = vault(
+        name,
+        &[
+            ("Note.md", ""),
+            (
+                ".blackglass/plugins.toml",
+                "installed = [\"emoji-shortcodes\"]\nenabled = [\"emoji-shortcodes\"]\n",
+            ),
+            (
+                ".blackglass/plugins/emoji-shortcodes/settings.toml",
+                settings,
+            ),
+        ],
+    );
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "Note.md"));
+    app
+}
+
+#[test]
+fn emoji_shortcodes_are_suggested_and_replaced() {
+    let mut app = emoji_app("emoji", "");
+    typing(&mut app, "So funny :jo");
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(
+        rows.contains("😂") && rows.contains("joy"),
+        "suggested: {rows}"
+    );
+    let first = &app.plugin_suggest.as_ref().unwrap().items[0].1;
+    assert_eq!(first, "😂", "the exact name's start first");
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(cursor_line(&app), "So funny 😂");
+    // A time isn't a shortcode.
+    typing(&mut app, " at 10:30");
+    assert!(app.plugin_suggest.is_none(), "not after a digit");
+    // What was used comes first next time.
+    typing(&mut app, " :o");
+    let items = &app.plugin_suggest.as_ref().unwrap().items;
+    assert_eq!(
+        items[0].1, "😂",
+        "recently used, though joy doesn't start with o"
+    );
+    key(&mut app, KeyCode::Esc);
+    // Shortcodes typed out show as their emoji where the cursor isn't.
+    typing(&mut app, " :heart: ");
+    key(&mut app, KeyCode::Enter);
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(rows.contains("❤"), "the emoji in place of :heart:: {rows}");
+}
+
+#[test]
+fn emoji_shortcodes_can_stay_shortcodes() {
+    let mut app = emoji_app("emoji-keep", "immediate_replace = \"false\"\n");
+    typing(&mut app, ":thumbsu");
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(cursor_line(&app), ":thumbsup: ");
+}
+
+#[test]
+fn highlights_have_colors() {
+    let dir = vault("highlights", &[("Note.md", "")]);
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "Note.md"));
+    // Typing == suggests a color.
+    typing(&mut app, "a ==");
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(rows.contains("🔴") && rows.contains("purple"), "{rows}");
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Enter);
+    typing(&mut app, "hot");
+    assert!(
+        cursor_line(&app).starts_with("a ==🟠hot"),
+        "{}",
+        cursor_line(&app)
+    );
+    // The color of the highlight at the cursor changes; it can go.
+    let line = cursor_line(&app);
+    if !line.ends_with("==") {
+        typing(&mut app, "==");
+    }
+    key(&mut app, KeyCode::Left);
+    key(&mut app, KeyCode::Left);
+    key(&mut app, KeyCode::Left);
+    run_palette(&mut app, "highlight in green");
+    assert_eq!(cursor_line(&app), "a ==🟢hot==");
+    run_palette(&mut app, "remove highlight color");
+    assert_eq!(cursor_line(&app), "a ==hot==");
+    // A selection is highlighted in a color.
+    key(&mut app, KeyCode::End);
+    typing(&mut app, " cold");
+    for _ in 0..4 {
+        press(&mut app, KeyCode::Left, KeyModifiers::SHIFT);
+    }
+    run_palette(&mut app, "highlight in blue");
+    assert_eq!(cursor_line(&app), "a ==hot== ==🔵cold==");
+    // Shown in its color, the emoji hidden, off the cursor's line.
+    key(&mut app, KeyCode::End);
+    key(&mut app, KeyCode::Enter);
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(
+        rows.contains("a hot cold") && !rows.contains("🔵"),
+        "{rows}"
+    );
+}
+
+#[test]
+fn periodic_notes_sets_jumps_startup_and_deleting() {
+    let dir = vault(
+        "periodic-more",
+        &[
+            ("Journal/2026-08-08.md", "eight"),
+            ("Journal/2026-08-12.md", "twelve"),
+            ("Work/note.md", ""),
+            (
+                ".blackglass/plugins/periodic-notes/settings.toml",
+                "[general]\nopen_at_startup = \"true\"\n\n[daily]\nfolder = \"Journal\"\n\n[work/daily]\nfolder = \"Work\"\nformat = \"[day] YYYYMMDD\"\n",
+            ),
+            (
+                ".blackglass/plugins.toml",
+                "installed = [\"periodic-notes\"]\nenabled = [\"periodic-notes\"]\n",
+            ),
+        ],
+    );
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    // Today's note opens at startup.
+    app.tick();
+    let todays = note(&app, &format!("Journal/{}.md", today("%Y-%m-%d")));
+    assert_eq!(active_path(&app), Some(todays.clone()), "{}", app.message);
+    // Jumps for a granularity: from a daily note to the closest one.
+    app.open(&note(&app, "Journal/2026-08-08.md"));
+    run_palette(&mut app, "jump forwards to closest daily note");
+    assert_eq!(active_path(&app), Some(note(&app, "Journal/2026-08-12.md")));
+    // Another calendar set: its own folder and names.
+    run_palette(&mut app, "switch calendar set");
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(rows.contains("work"), "{rows}");
+    typing(&mut app, "work");
+    key(&mut app, KeyCode::Enter);
+    run_palette(&mut app, "open daily note");
+    let work = note(&app, &format!("Work/day {}.md", today("%Y%m%d")));
+    assert_eq!(active_path(&app), Some(work.clone()), "{}", app.message);
+    // Delete from the calendar (asked first).
+    alt(&mut app, KeyCode::Char('c'));
+    key(&mut app, KeyCode::Delete);
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(rows.contains("Delete"), "{rows}");
+    key(&mut app, KeyCode::Enter);
+    assert!(!work.exists(), "{}", app.message);
+    assert!(todays.exists(), "the other set's note stays");
 }

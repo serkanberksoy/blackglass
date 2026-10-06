@@ -22,6 +22,8 @@ pub struct PluginSuggest {
     pub items: Vec<(String, String)>,
     /// What choosing an item does besides (item, effect).
     pub effects: Vec<(usize, crate::plugins::Effect)>,
+    /// What Shift+Enter puts in instead (item, text).
+    pub alts: Vec<(usize, String)>,
     pub selected: usize,
 }
 

@@ -57,6 +57,8 @@ pub enum Prompt {
     NewNote { folder: PathBuf, input: String },
     /// Save As (Ctrl+Alt+S): a path relative to the vault.
     SaveAs { input: String },
+    /// The date picker: a date in words, put in at the cursor.
+    Date { input: String },
     /// "Save changes?" for tab `tab`, before closing it or quitting.
     Unsaved { tab: usize, then: Then },
     /// Ctrl+O: go to a note.
@@ -100,6 +102,8 @@ pub enum Target {
     Editor,
     /// The vault's notes (`.blackglass/notes.toml`: note IDs).
     Notes,
+    /// The vault's natural language dates (`.blackglass/dates.toml`).
+    Dates,
     /// A plugin's, by its index in the plugins list.
     Plugin(usize),
 }
@@ -370,6 +374,8 @@ pub struct App {
     pub plugin_suggest: Option<link_suggest::PluginSuggest>,
     /// The link (line, name start) whose suggestions were closed with Esc.
     dismissed: Option<(usize, usize)>,
+    /// The vault's natural language dates settings (W-128).
+    pub dates: crate::nldates::Settings,
 }
 
 impl App {
@@ -400,6 +406,7 @@ impl App {
             suggest: None,
             plugin_suggest: None,
             dismissed: None,
+            dates: crate::nldates::Settings::load(&vault),
             back: Vec::new(),
             forward: Vec::new(),
             here: None,
@@ -1019,13 +1026,20 @@ impl App {
     /// The link suggestion list's keys (W-23): ↑/↓ choose, Enter or Tab
     /// inserts, Esc closes. Returns false for keys the editor gets.
     fn suggest_key(&mut self, key: KeyEvent) -> bool {
+        if self.plugin_suggest.is_some()
+            && key.code == KeyCode::Enter
+            && key.modifiers == KeyModifiers::SHIFT
+        {
+            self.accept_plugin_suggestion(true);
+            return true;
+        }
         if let Some(p) = &mut self.plugin_suggest
             && key.modifiers.is_empty()
         {
             match key.code {
                 KeyCode::Up => p.selected = p.selected.saturating_sub(1),
                 KeyCode::Down => p.selected = (p.selected + 1).min(p.items.len().saturating_sub(1)),
-                KeyCode::Enter | KeyCode::Tab => self.accept_plugin_suggestion(),
+                KeyCode::Enter | KeyCode::Tab => self.accept_plugin_suggestion(false),
                 KeyCode::Esc => {
                     self.dismissed = Some((p.row, p.start));
                     self.plugin_suggest = None;
@@ -1127,7 +1141,11 @@ impl App {
         let found = at.and_then(|(row, col, line)| {
             // Tags and properties first, then the plugins'.
             let lines = &self.view()?.editor.lines;
-            let s = match crate::tag_suggest::suggestions(&self.vault, lines, row, col) {
+            let now = chrono::Local::now().naive_local();
+            let s = match crate::tag_suggest::suggestions(&self.vault, lines, row, col)
+                .or_else(|| crate::nldates::suggestions(&line, col, &self.dates, now))
+                .or_else(|| crate::highlights::suggestions(&line, col))
+            {
                 Some(s) => (None, s),
                 None => {
                     let (id, s) = self.plugins.borrow().suggestions(&line, col, &self.vault)?;
@@ -1155,17 +1173,23 @@ impl App {
             start: s.start,
             items: s.items,
             effects: s.effects,
+            alts: s.alts,
             selected,
         });
     }
 
     /// Puts the highlighted plugin suggestion in place of what was typed.
-    fn accept_plugin_suggestion(&mut self) {
+    fn accept_plugin_suggestion(&mut self, alt: bool) {
         let Some(p) = self.plugin_suggest.take() else {
             return;
         };
         let Some((_, text)) = p.items.get(p.selected) else {
             return;
+        };
+        // Shift+Enter: the item's other text, if it has one.
+        let text = match p.alts.iter().find(|(i, _)| alt && *i == p.selected) {
+            Some((_, other)) => other,
+            None => text,
         };
         let Some(view) = self.tabs.get_mut(self.active) else {
             return;
@@ -1510,10 +1534,9 @@ impl App {
                 self.editor_key(key);
             }
             Run::Insert { text, back } => self.insert(&text, back),
-            Run::InsertDate => {
-                let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-                self.insert(&today, 0);
-            }
+            Run::InsertDate => self.date_command(commands::Dates::Today),
+            Run::Dates(command) => self.date_command(command),
+            Run::Highlight(color) => self.highlight(color),
             Run::Plugin(id, command) => self.call_plugin(id, command, None),
             Run::Mode(_) if self.view().is_some_and(is_help) => {
                 self.message = HELP_READ_ONLY.into();
@@ -1777,6 +1800,7 @@ impl App {
         };
         self.save_session();
         self.watcher = crate::watch::Watcher::start(&vault.root, crate::watch::INTERVAL);
+        self.dates = crate::nldates::Settings::load(&vault);
         self.vault = Rc::new(vault);
         self.plugins = Rc::new(RefCell::new(Plugins::for_vault(&self.vault)));
         self.plugins.borrow_mut().queries.set_vault(&self.vault);
@@ -1959,6 +1983,7 @@ impl App {
         }
         match effect {
             Effect::None => {}
+            Effect::RowAction(action) => self.row_action(&action),
             Effect::Message(m) => self.message = m,
             Effect::FilesChanged(message) => {
                 self.files_changed();
@@ -2755,17 +2780,19 @@ impl App {
                 }
                 self.message = TEMPLATER_NEEDED.into();
             }
-            Prompt::NewNote { input, .. } | Prompt::SaveAs { input } => match key.code {
-                KeyCode::Enter => {
-                    self.submit(prompt);
-                    return Action::Continue;
+            Prompt::NewNote { input, .. } | Prompt::SaveAs { input } | Prompt::Date { input } => {
+                match key.code {
+                    KeyCode::Enter => {
+                        self.submit(prompt);
+                        return Action::Continue;
+                    }
+                    KeyCode::Backspace => {
+                        input.pop();
+                    }
+                    KeyCode::Char(c) if !ctrl => input.push(c),
+                    _ => {}
                 }
-                KeyCode::Backspace => {
-                    input.pop();
-                }
-                KeyCode::Char(c) if !ctrl => input.push(c),
-                _ => {}
-            },
+            }
         }
         self.prompt = Some(prompt);
         Action::Continue
@@ -2783,6 +2810,11 @@ impl App {
                 "Notes".into(),
                 crate::note_ids::NoteIds::settings(),
                 crate::note_ids::values(&self.vault),
+            ),
+            Target::Dates => (
+                "Dates".into(),
+                crate::nldates::Settings::schema(),
+                crate::nldates::Settings::values(&self.vault),
             ),
             Target::Plugin(i) => {
                 let plugins = self.plugins.borrow();
@@ -2815,6 +2847,20 @@ impl App {
                 let text = values.to_text(&crate::note_ids::NoteIds::settings());
                 mdedit::files::write_atomic(&path, &text)
                     .map_err(|e| format!("Cannot save notes.toml: {e}"))
+            }
+            Target::Dates => {
+                let mut values = crate::nldates::Settings::values(&self.vault);
+                values.set("", &setting.key, value);
+                let path = self.vault.root.join(crate::nldates::FILE);
+                if let Some(dir) = path.parent() {
+                    std::fs::create_dir_all(dir)
+                        .map_err(|e| format!("Cannot save dates.toml: {e}"))?;
+                }
+                let text = values.to_text(&crate::nldates::Settings::schema());
+                mdedit::files::write_atomic(&path, &text)
+                    .map_err(|e| format!("Cannot save dates.toml: {e}"))?;
+                self.dates = crate::nldates::Settings::load(&self.vault);
+                Ok(())
             }
             Target::Plugin(i) => {
                 let result = self
@@ -4114,11 +4160,108 @@ impl App {
                 None => self.create_new_note(&folder, &input, "").map(|_| ()),
             },
             Prompt::SaveAs { input } => self.save_as(&input),
+            Prompt::Date { input } => self.insert_date_from(&input),
             _ => unreachable!("only text prompts are submitted"),
         };
         if let Err(e) = result {
             self.message = e;
         }
+    }
+
+    /// The date picker's Enter: the date in words put in at the cursor (a
+    /// link if the settings say so).
+    fn insert_date_from(&mut self, words: &str) -> Result<(), String> {
+        let now = chrono::Local::now().naive_local();
+        let day = crate::nldates::parse_date(words, now, self.dates.week_start)
+            .ok_or_else(|| format!("No date in \"{words}\""))?;
+        let text = crate::nldates::date_text(day, None, &self.dates);
+        self.insert(&text, 0);
+        Ok(())
+    }
+
+    /// Highlights the selection in color `color` (an index into mdedit's
+    /// highlight colors; `None`: no color), or gives the highlight at the
+    /// cursor that color (W-130).
+    fn highlight(&mut self, color: Option<usize>) {
+        let emoji = color.map(|i| mdedit::markdown::HIGHLIGHT_COLORS[i].0);
+        let Some(view) = self.view() else {
+            return;
+        };
+        if let Some(text) = view.editor.selected_text().filter(|t| !t.contains('\n')) {
+            self.insert(&format!("=={}{text}==", emoji.unwrap_or_default()), 0);
+            return;
+        }
+        let (row, col) = (view.editor.row, view.editor.col);
+        match crate::highlights::recolor(&view.editor.lines[row], col, emoji) {
+            Some(line) => {
+                // The cursor keeps its place in the text.
+                let old = view.editor.lines[row].chars().count();
+                let new = line.chars().count();
+                let effect = Effect::ReplaceLines {
+                    from: row,
+                    to: row + 1,
+                    lines: vec![line],
+                    cursor: (row, (col + new).saturating_sub(old).min(new)),
+                };
+                self.apply_effect("blackglass", "highlight", effect);
+            }
+            None => self.message = "Select text or put the cursor in a highlight".into(),
+        }
+    }
+
+    /// Runs a natural language dates command (W-128).
+    fn date_command(&mut self, command: commands::Dates) {
+        use commands::Dates;
+        let now = chrono::Local::now().naive_local();
+        let format = |f: &str| crate::plugins::moment::format(&now, f);
+        let s = self.dates.clone();
+        let text = match command {
+            Dates::Today => format(&s.format),
+            Dates::Time => format(&s.time_format),
+            Dates::Now => format!(
+                "{}{}{}",
+                format(&s.format),
+                s.separator,
+                format(&s.time_format)
+            ),
+            Dates::Picker => {
+                self.prompt = Some(Prompt::Date {
+                    input: String::new(),
+                });
+                return;
+            }
+            Dates::Parse | Dates::ParseLink | Dates::ParsePlain | Dates::ParseTime => {
+                let Some(words) = self
+                    .view()
+                    .and_then(|v| v.editor.selected_text())
+                    .filter(|w| !w.trim().is_empty())
+                else {
+                    self.message = "Select a date in words first".into();
+                    return;
+                };
+                let parsed = if command == Dates::ParseTime {
+                    crate::nldates::parse_time(&words, now)
+                        .map(|t| crate::plugins::moment::format(&t, &s.time_format))
+                } else {
+                    crate::nldates::parse_date(&words, now, s.week_start).map(|day| {
+                        let date = crate::nldates::format_date(day, &s);
+                        match command {
+                            Dates::ParseLink => format!("[{words}]({date})"),
+                            Dates::ParsePlain => date,
+                            _ => format!("[[{date}]]"),
+                        }
+                    })
+                };
+                match parsed {
+                    Some(text) => text,
+                    None => {
+                        self.message = format!("No date in \"{words}\"");
+                        return;
+                    }
+                }
+            }
+        };
+        self.insert(&text, 0);
     }
 
     /// Saves the active note under `name` (relative to the vault).
@@ -4192,7 +4335,9 @@ impl App {
     fn paste(&mut self, text: &str) {
         let line = text.replace(['\r', '\n'], " ");
         match &mut self.prompt {
-            Some(Prompt::NewNote { input, .. } | Prompt::SaveAs { input }) => {
+            Some(
+                Prompt::NewNote { input, .. } | Prompt::SaveAs { input } | Prompt::Date { input },
+            ) => {
                 input.push_str(&line);
             }
             Some(Prompt::Switcher(s)) => {

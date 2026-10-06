@@ -110,6 +110,10 @@ impl Plugin for Dataview {
     }
 
     fn render_span(&self, open: &str, inner: &str) -> Option<String> {
+        // `==` (a highlight's marks, written as code) isn't a query.
+        if open == "`=" && inner.starts_with('=') {
+            return None;
+        }
         let key = (format!("{open}{inner}"), self.here.clone());
         if let Some(v) = self.inline.borrow().get(&key) {
             return v.clone();

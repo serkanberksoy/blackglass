@@ -56,6 +56,27 @@ pub enum Host {
     ChooseTheme,
 }
 
+/// The natural language dates commands (W-128).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dates {
+    /// Today's date.
+    Today,
+    /// The time now.
+    Time,
+    /// The date and time now.
+    Now,
+    /// The selection to a link to its day (`[[2026-10-07]]`).
+    Parse,
+    /// The selection to a Markdown link (`[tomorrow](2026-10-07)`).
+    ParseLink,
+    /// The selection to the date.
+    ParsePlain,
+    /// The selection to a time.
+    ParseTime,
+    /// Ask for a date in words.
+    Picker,
+}
+
 /// The editor's modes (mdedit's live preview, source mode and view mode).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -75,8 +96,13 @@ pub enum Action {
         text: String,
         back: usize,
     },
-    /// Insert today's date (`YYYY-MM-DD`).
+    /// Insert today's date (in the Dates settings' format).
     InsertDate,
+    /// A natural language dates command.
+    Dates(Dates),
+    /// Highlight in a color (an index into mdedit's highlight colors;
+    /// `None`: no color).
+    Highlight(Option<usize>),
     /// A plugin's command: (plugin id, command id).
     Plugin(&'static str, &'static str),
     /// Switch the active note's mode.
@@ -128,7 +154,12 @@ impl Command {
                     | Host::Footnotes
                     | Host::EditProperties
             ),
-            Action::Key(_) | Action::Insert { .. } | Action::InsertDate | Action::Mode(_) => true,
+            Action::Key(_)
+            | Action::Insert { .. }
+            | Action::InsertDate
+            | Action::Dates(_)
+            | Action::Highlight(_)
+            | Action::Mode(_) => true,
             Action::Plugin(..) | Action::PluginSettings(_) => false,
         }
     }
@@ -278,6 +309,40 @@ pub fn builtin() -> Vec<Command> {
         c("Insert horizontal rule", "", insert("---\n", 0)),
         c("Insert task", "", insert("- [ ] ", 0)),
         c("Insert today's date", "", Action::InsertDate),
+        c("Insert the current time", "", Action::Dates(Dates::Time)),
+        c(
+            "Insert the current date and time",
+            "",
+            Action::Dates(Dates::Now),
+        ),
+        c(
+            "Parse natural language date",
+            "",
+            Action::Dates(Dates::Parse),
+        ),
+        c(
+            "Parse natural language date as link",
+            "",
+            Action::Dates(Dates::ParseLink),
+        ),
+        c(
+            "Parse natural language date as plain text",
+            "",
+            Action::Dates(Dates::ParsePlain),
+        ),
+        c(
+            "Parse natural language time",
+            "",
+            Action::Dates(Dates::ParseTime),
+        ),
+        c("Date picker", "", Action::Dates(Dates::Picker)),
+        c("Highlight in red", "", Action::Highlight(Some(0))),
+        c("Highlight in orange", "", Action::Highlight(Some(1))),
+        c("Highlight in yellow", "", Action::Highlight(Some(2))),
+        c("Highlight in green", "", Action::Highlight(Some(3))),
+        c("Highlight in blue", "", Action::Highlight(Some(4))),
+        c("Highlight in purple", "", Action::Highlight(Some(5))),
+        c("Remove highlight color", "", Action::Highlight(None)),
         host("Quit", "Ctrl+Q", Host::Quit),
     ]
 }

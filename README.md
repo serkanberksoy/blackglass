@@ -50,7 +50,7 @@ blackglass --help               # all options and keys
 one, **Ctrl+G** searches the vault, **Ctrl+B** moves between the sidebar and
 the editor, **Ctrl+Q** quits.
 
-**Version:** 0.77.1 · **Stage:** M1 (workspace) and M2 (commands & plugins) complete; M3 (vault features, Zettelkasten) nearly · [Version history](VERSION.md)
+**Version:** 0.82.0 · **Stage:** M1 (workspace) and M2 (commands & plugins) complete; M3 (vault features, Zettelkasten) nearly · [Version history](VERSION.md)
 
 ```
  Files  Search  Tags           │ 2026-08-08 ×  2026-08-09 ×  +
@@ -98,7 +98,7 @@ uses when they're there:
 
 ## Features
 
-114 of 126 tracked features are done (`requirements/features.md`).
+118 of 130 tracked features are done (`requirements/features.md`).
 
 | Area | What you get |
 |------|--------------|
@@ -107,6 +107,8 @@ uses when they're there:
 | Tabs | One editor per note, an unsaved dot, close buttons, `+` for a new note; an open note reuses its tab; the open tabs and folders come back next time; notes changed elsewhere (a sync tool, Git) are picked up |
 | Editor | Everything mdedit does: live preview, tables, callouts, tasks, images, footnotes, `%%comments%%`, search and replace, undo, folding, emoji; notes, sections and blocks (`![[Note#^id]]`) embedded from anywhere in the vault |
 | Link autocomplete | Type `[[`: the 5 latest notes, then a fuzzy search as you type; ↑/↓ and Enter or Tab insert `[[Note]]` |
+| Highlight colors | `==🔴text==` in red, orange, yellow, green, blue or purple (the emoji hidden); typing `==` suggests a color; "Highlight in …" colors the selection or the highlight at the cursor |
+| Dates in words | Type `@today`, `@tomorrow`, `@next friday`, `@in 3 days`, `@oct 20`: Enter puts in a link to that day (Shift+Enter keeps the words as its alias); the selection to a date, the current date and time, a date picker; format and trigger in Settings → Dates (`example_vault/Examples/Dates.md`) |
 | Links | `[[Note]]` is found anywhere in the vault (the nearest, shortest path wins); Ctrl+Enter or a click opens it in a tab (a missing note is offered to be made); web links open in the browser; embeds and images too; a link to a note that doesn't exist yet is dimmed |
 | Quick switcher | Fuzzy search by name or `aliases`, recent notes first, and "Create" for a new name |
 | Vault search | Every note, smart case, name matches first; opens at the match and F3 finds the next one. Several words all match; `"a phrase"`, `-word` (not), `OR`, `( )`; `tag:name`, `file:`, `path:`, `line:(a b)`, `task:`, `task-todo:`, `task-done:`, `[property]`, `[property:value]` |
@@ -128,12 +130,14 @@ uses when they're there:
 | Advanced Tables plugin | In a table Tab / Shift+Tab / Enter move between cells and line it up; commands insert, delete, move, align and sort rows and columns, transpose, export CSV, and evaluate `<!-- TBLFM: … -->` formulas (`example_vault/Examples/Tables.md`); a Table tab in the sidebar with the operations |
 | Bases plugin | Database views of your notes: ```` ```base ```` blocks and `.base` files filter notes by their properties, compute formulas, and show them as a table (grouped, with summaries), a list, cards or a kanban board; switch, sort, group, filter and search views from the palette, embed a base or one of its views (`![[Library.base#Cards]]`), click a row to change its properties, copy or export a view, a new note from a view (`example_vault/Examples/Library.base`) |
 | Tasks plugin | Due, scheduled and start dates, priorities, recurrence and dependencies on tasks; ```` ```tasks ```` blocks filter, sort and group every task in the vault (a click checks one off); toggling writes done dates and a recurring task's next occurrence; create, edit and postpone tasks from the palette (`example_vault/Examples/Tasks.md`); fields suggested as you type, `show tree`, `columns by`, regex filters |
+| Task Archiver plugin | Done tasks move under an Archived heading (in the note, another note or today's daily note), in a date tree of list items if you like, with the date and their headings; delete done tasks, archive the heading under the cursor, sort a list (items, open, done), check a task off and archive it; rules send some tasks elsewhere or delete them (`example_vault/Examples/Task Archiver.md`) |
+| Emoji Shortcodes plugin | Type `:` and a shortcode (`:jo`): emoji suggested, recently used first; Enter puts in the emoji (or keeps the shortcode); `:heart:` in the text shows as ❤️ (`example_vault/Examples/Emoji.md`) |
 | Mermaid plugin | ```` ```mermaid ```` blocks drawn as text: flowcharts as a tree of their links (subgraphs listed), sequence diagrams with lifelines and arrows, pie charts as bars, Gantt charts as a timeline (`example_vault/Examples/Diagrams.md`) |
 | Recent Files plugin | A Recent tab after Files, Search and Tags: the last 25 notes you visited (or changed), newest first (Enter opens one, `l` links it at the cursor, Delete takes it off; "Clear list" in the palette); paths and tags can be left out, titles shown; kept per vault; not installed by default |
 | Bookmarks plugin | Bookmark the note, the heading above the cursor, the folder chosen in the explorer or the search; a Bookmarks tab opens them, `r` renames, Delete removes; renamed notes keep theirs |
 | Zettelkasten plugin | Links to headings and blocks (`[[Note#`, `[[Note#^`, `[[##`, `[[^^`; block ids added), copied links, new unique notes linked from here; Folgezettel sequences (sequel and branch notes, a Sequence tab), breadcrumbs from `up` / `down` / `next` / `prev`, titles shown instead of IDs; extract to another note, extract a heading, split and merge notes; orphans, dead ends, unresolved links, a Links tab, link counts, quick capture (`example_vault/Zettelkasten/`) |
 | Citations plugin | A BibTeX / CSL JSON bibliography (from Zotero): insert `[@key]` (shown as "Author Year"), open or link a reference's literature note, made from a template |
-| Periodic Notes plugin | Alt+D opens today's note; open today's daily, weekly, monthly, quarterly or yearly note (created from its template), and jump to the next or previous one; a calendar in the sidebar (Alt+C) opens any day's, week's or month's note, or asks to create it; formats, folders and templates in `.blackglass/plugins/periodic-notes/settings.toml` |
+| Periodic Notes plugin | Alt+D opens today's note; open today's daily, weekly, monthly, quarterly or yearly note (created from its template), and jump to the next or previous one; a calendar in the sidebar (Alt+C) opens any day's, week's or month's note, or asks to create it, and deletes one (Delete); templates with `{{date+1d:FMT}}`, `{{month:FMT}}` …; weeks starting on Monday, Sunday or Saturday; today's note at startup; calendar sets (a work journal beside a personal one); formats, folders and templates in `.blackglass/plugins/periodic-notes/settings.toml` |
 | View mode | Alt+V: a read-only view of the note, every line rendered; move over the rendered rows, Tab to a link or a query result, Enter follows it (a Dataview row opens its page, a task its line) |
 | Mouse | Click in the text to place the cursor; click links, embeds, images (in the system viewer) and query results; files, results, tags, panels and tabs; the wheel scrolls (`--no-mouse` leaves the mouse to the terminal) |
 | Themes | "Choose theme" (or the settings' Theme row): Default, Paper (light), Ember, Ocean, Forest, High contrast, previewed as you move; your own in `~/.config/blackglass/themes/` (the keys are described in `themes/default.toml`); the editor's colors too (links, code, quotes, its page) |

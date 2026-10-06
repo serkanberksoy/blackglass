@@ -11,7 +11,7 @@
 
 use std::cell::Cell;
 
-use chrono::{Datelike, Duration, Months, NaiveDate};
+use chrono::{Datelike, Duration, Months, NaiveDate, Weekday};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -42,10 +42,16 @@ const WIDE: u16 = 25;
 pub enum Action {
     /// Open (or create) the note of this period and date.
     Open(Period, NaiveDate),
+    /// Delete the note of this period and date (Delete).
+    Delete(Period, NaiveDate),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Calendar {
+    /// The day weeks start on.
+    pub week_start: Weekday,
+    /// The calendar set shown (`""`: don't say).
+    pub set: String,
     /// The selected day; `None`: today.
     selected: Option<NaiveDate>,
     /// The first day of the month shown; `None`: the selected day's.
@@ -54,6 +60,19 @@ pub struct Calendar {
     /// were shown.
     week_numbers: Cell<bool>,
     width: Cell<u16>,
+}
+
+impl Default for Calendar {
+    fn default() -> Self {
+        Calendar {
+            week_start: Weekday::Mon,
+            set: String::new(),
+            selected: None,
+            month: None,
+            week_numbers: Cell::default(),
+            width: Cell::default(),
+        }
+    }
 }
 
 fn first_of(day: NaiveDate) -> NaiveDate {
@@ -69,9 +88,9 @@ impl Calendar {
         self.month.unwrap_or_else(|| first_of(self.selected(today)))
     }
 
-    /// The Monday the grid starts on.
+    /// The day the grid starts on (the week's first before the 1st).
     fn grid_start(&self, today: NaiveDate) -> NaiveDate {
-        Period::Weekly.start(self.month(today))
+        Period::Weekly.start(self.month(today), self.week_start)
     }
 
     /// Where the day columns start.
@@ -95,7 +114,10 @@ impl Calendar {
         let month = self.month(today);
         let selected = self.selected(today);
         let inner = usize::from(width.saturating_sub(4));
-        let title = month.format("%B %Y").to_string();
+        let mut title = month.format("%B %Y").to_string();
+        if !self.set.is_empty() && title.chars().count() + self.set.chars().count() + 3 <= inner {
+            title = format!("{title} · {}", self.set);
+        }
         let title_style = if has_note(Period::Monthly, month) {
             noted()
         } else {
@@ -111,7 +133,10 @@ impl Calendar {
         if week_numbers {
             header.push_str("Wk ");
         }
-        header.push_str("Mo Tu We Th Fr Sa Su");
+        const DAYS: [&str; 7] = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+        let first = self.week_start.num_days_from_monday() as usize;
+        let names: Vec<&str> = (0..7).map(|i| DAYS[(first + i) % 7]).collect();
+        header.push_str(&names.join(" "));
         lines.push(Line::from(Span::styled(header, OTHER_MONTH)));
         let start = self.grid_start(today);
         for week in 0..WEEKS {
@@ -123,8 +148,9 @@ impl Calendar {
                 } else {
                     OTHER_MONTH
                 };
+                let week = crate::plugins::moment::Week::starting(self.week_start);
                 spans.push(Span::styled(
-                    format!("{:>2}", monday.iso_week().week()),
+                    format!("{:>2}", crate::plugins::moment::week_of(monday, week).1),
                     style,
                 ));
                 spans.push(Span::raw(" "));
@@ -182,6 +208,7 @@ impl Calendar {
             KeyCode::Enter => return Some(Action::Open(Period::Daily, day)),
             KeyCode::Char('w') => return Some(Action::Open(Period::Weekly, day)),
             KeyCode::Char('m') => return Some(Action::Open(Period::Monthly, day)),
+            KeyCode::Delete => return Some(Action::Delete(Period::Daily, day)),
             _ => None,
         };
         if let Some(to) = to {
@@ -238,6 +265,26 @@ impl Calendar {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn weeks_can_start_on_sunday() {
+        let c = Calendar {
+            week_start: chrono::Weekday::Sun,
+            ..Calendar::default()
+        };
+        let today = day(2026, 9, 29);
+        let lines = text(&c.lines(today, 30, true, |_, _| false));
+        assert_eq!(lines[1], " Wk Su Mo Tu We Th Fr Sa");
+        assert_eq!(
+            lines[2], " 36 30 31  1  2  3  4  5",
+            "the Sunday before the 1st, US weeks"
+        );
+        let mut c = c;
+        assert_eq!(
+            c.key(KeyEvent::new(KeyCode::Delete, KeyModifiers::NONE), today),
+            Some(Action::Delete(Period::Daily, today))
+        );
+    }
+
     use super::*;
     use ratatui::crossterm::event::KeyModifiers;
 

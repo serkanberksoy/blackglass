@@ -70,6 +70,16 @@ window. This page is read-only; **{close-tab}** closes it.
 - Typing `[[` suggests notes to link to; `#` suggests the vault's tags, and
   in the frontmatter its property names and their values (Enter or Tab
   puts one in). A link to a note that doesn't exist yet is dimmed.
+- Highlights in color: `==🔴text==` (🔴 🟠 🟡 🟢 🔵 🟣); typing `==`
+  suggests a color. **{highlight-in-red}** … **{highlight-in-purple}**
+  highlight the selection, or recolor the highlight at the cursor;
+  **{remove-highlight-color}** makes it plain again.
+- Dates in words: type `@` and a date (`@today`, `@tomorrow`, `@next
+  friday`, `@in 3 days`, `@oct 20`, `@time` for times): Enter puts in a
+  link to that day's note, Shift+Enter keeps your words as its alias.
+  **{date-picker}** asks for one; **{parse-natural-language-date}** turns
+  the selection into one. Format, trigger and links: the settings' Dates
+  page.
 - A click in the text puts the cursor there.
 - The open tabs and folders come back the next time you open the vault,
   and notes changed by another program (a sync tool, Git) are picked up;

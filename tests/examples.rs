@@ -94,7 +94,7 @@ fn inline_queries(lines: &[String]) -> Vec<(&'static str, String)> {
             }
             if let Some(code) = part.strip_prefix("$=") {
                 found.push(("`$=", code.to_string()));
-            } else if let Some(code) = part.strip_prefix('=') {
+            } else if let Some(code) = part.strip_prefix('=').filter(|c| !c.starts_with('=')) {
                 found.push(("`=", code.to_string()));
             }
         }

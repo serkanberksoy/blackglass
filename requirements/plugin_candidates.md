@@ -13,6 +13,7 @@ to mdedit first.
 | dataview | The Dataview plugin (gaps: `dataview_requirements.md`) |
 | templater-obsidian | The Templater plugin (gaps: `templater_requirements.md`) |
 | obsidian-emoji-toolbar | mdedit's emoji picker (Ctrl+E, T-14, EP-xx) |
+| emoji-shortcodes | ✅ The Emoji Shortcodes plugin (W-129, 0.80.0): `emoji_requirements.md` |
 | url-into-selection | mdedit: paste a URL over a selection makes a link (V-09) |
 
 ## 1. Least effort (hours to a day each; fit the current hooks)

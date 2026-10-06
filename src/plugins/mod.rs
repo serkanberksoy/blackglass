@@ -5,10 +5,12 @@
 //! ([`catalog`]); which ones a vault has installed and enabled is saved in
 //! `.blackglass/plugins.toml` in the vault (like `.obsidian/`).
 
+pub mod archiver;
 pub mod bases;
 pub mod bookmarks;
 pub mod citations;
 pub mod dataview;
+pub mod emoji;
 pub mod git;
 pub mod js;
 pub mod mermaid;
@@ -183,17 +185,23 @@ pub enum Effect {
     },
     /// Show the file or folder at `path` (absolute) in the file explorer.
     Reveal(PathBuf),
+    /// Do a result row's action (`plugin:<id>:<payload>` reaches
+    /// [`Plugin::row_action`]): a suggestion telling its plugin it was
+    /// chosen.
+    RowAction(String),
 }
 
 /// What a plugin suggests while typing ([`Plugin::suggestions`]): the
 /// char column where the text it replaces starts, and (label, text to put
 /// in its place) pairs; an item may also do something once it's in
-/// (`effects`: (item, effect), e.g. a block id added to the linked note).
+/// (`effects`: (item, effect), e.g. a block id added to the linked note),
+/// and may put in other text with Shift+Enter (`alts`: (item, text)).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Suggestions {
     pub start: usize,
     pub items: Vec<(String, String)>,
     pub effects: Vec<(usize, Effect)>,
+    pub alts: Vec<(usize, String)>,
 }
 
 /// A row of a plugin's sidebar tab.
@@ -507,6 +515,8 @@ pub fn catalog() -> Vec<Box<dyn Plugin>> {
         Box::new(bookmarks::Bookmarks::new()),
         Box::new(zettelkasten::Zettelkasten::new()),
         Box::new(citations::Citations::new()),
+        Box::new(archiver::Archiver::new()),
+        Box::new(emoji::EmojiShortcodes::new()),
     ]
 }
 

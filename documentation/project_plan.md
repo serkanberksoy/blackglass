@@ -235,6 +235,20 @@ In order:
       local graph as a tree, link counts, quick capture to an inbox.
     - **W-123 literature notes:** a bibliography, citations, literature
       notes from a template.
+16. ✅ **Task Archiver, W-127** (M4, requested 2026-10-06; 0.78.0): the
+    community plugin, compared in `requirements/archiver_requirements.md`.
+17. **Requested 2026-10-06, in this order:**
+    - ✅ **Natural language dates (core, W-128, 0.79.0):** `@today`,
+      `@tomorrow`, `@next friday` … turned into links to their days as
+      you type, after the community plugin.
+    - ✅ **Emoji Shortcodes** (plugin, W-129, 0.80.0): `:smile:`
+      suggested and replaced.
+    - ✅ **Colored highlights (W-130, 0.81.0):** `==🔴text==` in colors,
+      as Obsidian 1.14 has them.
+    - ✅ **Periodic Notes, the rest (0.82.0):** its gaps in
+      `requirements/periodic_requirements.md` (PN-27 ribbon icons ✗).
+    - **Bases kanban, more** (to plan, not started): colors of the
+      columns and cards, moving cards between columns with keys.
 
 ## 2. M1: Workspace ✅
 

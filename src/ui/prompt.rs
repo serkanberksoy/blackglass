@@ -75,6 +75,26 @@ pub fn draw(buf: &mut Buffer, screen: Rect, app: &mut App, theme: &Theme) -> Opt
             );
             cursor
         }
+        Prompt::Date { input } => {
+            let inner = frame(buf, screen, " Date ", 3, theme)?;
+            let cursor = input_row(buf, inner, 0, "Date in words: ", input, "tomorrow", theme);
+            let now = chrono::Local::now().naive_local();
+            let read = match crate::nldates::parse_date(input, now, app.dates.week_start) {
+                Some(day) => format!("→ {}", crate::nldates::format_date(day, &app.dates)),
+                None if input.trim().is_empty() => "today, next friday, in 3 days, oct 20 …".into(),
+                None => "no date in that".into(),
+            };
+            put(
+                buf,
+                inner.x,
+                inner.y + 1,
+                &read,
+                inner.width,
+                theme.on(MUTED, BG_PROMPT),
+            );
+            hint(buf, inner, 2, "Enter insert  ·  Esc cancel", theme);
+            cursor
+        }
         Prompt::SaveAs { input } => {
             let inner = frame(buf, screen, " Save as ", 3, theme)?;
             let cursor = input_row(buf, inner, 0, "Path in the vault: ", input, "", theme);
