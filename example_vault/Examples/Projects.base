@@ -1,0 +1,41 @@
+filters:
+  or:
+    - file.inFolder("Examples/Projects")
+formulas:
+  urgency: if(priority == "high", "red", if(priority == "low", "gray", ""))
+views:
+  - type: kanban
+    name: Board
+    groupBy:
+      property: status
+      direction: ASC
+    groupColors:
+      Ideas: purple
+      Planned: blue
+      Doing: yellow
+      Done: green
+    cardColor: formula.urgency
+    columnWidth: 22
+    order:
+      - file.name
+      - priority
+      - due
+    sort:
+      - property: due
+        direction: ASC
+    groupOrder:
+      - Ideas
+      - Planned
+      - Doing
+      - Done
+      - null
+  - type: table
+    name: Table
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - file.name
+      - status
+      - priority
+      - due

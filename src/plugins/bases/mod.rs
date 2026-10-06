@@ -7,13 +7,23 @@
 //! - [`expr`]: the expression language.
 //! - [`views`]: running and drawing a view.
 //! - [`edit`]: changing a view without writing YAML.
+//! - [`board`]: a kanban view's columns; on a `.base` page the board is
+//!   driven by keys (←→↑↓ choose a card, Shift+←→ move it to another
+//!   column, Alt+Shift+←→ move the column, Enter open it, `n` a new note in the
+//!   column, Space collapse it), each also a command.
+//! - [`pane`]: the filters as rows in a pane above a `.base` page's
+//!   results (Alt+F shows or hides it, Alt+M sizes it), results following
+//!   every key.
 //! - Commands: switch, sort, group, limit, filter and search a view, choose
 //!   its properties, add formulas and views, export CSV, copy, a new note
 //!   from the view, edit a row's property (a row's menu too), create a
 //!   base file, insert a base block, edit a base file's YAML.
 
+pub mod board;
 pub mod edit;
 pub mod expr;
+pub mod filters;
+pub mod pane;
 pub mod syntax;
 pub mod views;
 
@@ -22,6 +32,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::text::Line;
 
 use super::dataview::index::Index;
@@ -65,6 +76,40 @@ pub struct Bases {
     search: HashMap<String, String>,
     /// The choices a view question offers, by command.
     choices: Vec<String>,
+    /// A board's selected card, by base source: its column and place,
+    /// and its note (which it follows when it moves).
+    selected: HashMap<String, Selection>,
+    /// A board's collapsed columns (their labels), by base source.
+    collapsed: HashMap<String, Vec<String>>,
+    /// "New note in this column": the grouped property and the column's
+    /// group.
+    new_in: Option<(String, Option<String>)>,
+    /// The filter pane.
+    pane: pane::FilterPane,
+}
+
+/// A board's selected card.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct Selection {
+    column: usize,
+    card: usize,
+    /// The card's note (its path in the vault).
+    note: Option<String>,
+}
+
+/// What can be done on a board (keys on a `.base` page, or commands).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BoardAction {
+    /// Choose the column (−1 / +1) or card (−1 / +1) beside.
+    Column(i32),
+    Card(i32),
+    Open,
+    /// Move the card to the column beside.
+    MoveCard(i32),
+    /// Move the column one place.
+    MoveColumn(i32),
+    NewNote,
+    Collapse,
 }
 
 /// A base found in the active note: its source, and the `.base` file if
@@ -185,6 +230,216 @@ impl Bases {
             this,
             now: chrono::Local::now().naive_local(),
             search: self.search.get(source).map(String::as_str),
+            selected: None,
+            collapsed: self.collapsed.get(source).map_or(&[], Vec::as_slice),
+        }
+    }
+
+    /// Where a board's selection is now (its note may have moved).
+    fn locate(&self, source: &str, columns: &[board::Column], rows: &[usize]) -> (usize, usize) {
+        let sel = self.selected.get(source).cloned().unwrap_or_default();
+        if let Some(rel) = &sel.note {
+            for (c, column) in columns.iter().enumerate() {
+                if let Some(k) = column
+                    .cards
+                    .iter()
+                    .position(|&r| self.index.pages[rows[r]].rel == *rel)
+                {
+                    return (c, k);
+                }
+            }
+        }
+        let c = sel.column.min(columns.len().saturating_sub(1));
+        let k = sel.card.min(
+            columns
+                .get(c)
+                .map_or(0, |col| col.cards.len().saturating_sub(1)),
+        );
+        (c, k)
+    }
+
+    /// Chooses card `card` of column `column` on the board of `source`.
+    fn select(
+        &mut self,
+        source: &str,
+        columns: &[board::Column],
+        rows: &[usize],
+        column: usize,
+        card: usize,
+    ) {
+        let note = columns
+            .get(column)
+            .and_then(|c| c.cards.get(card))
+            .map(|&r| self.index.pages[rows[r]].rel.clone());
+        self.selected
+            .insert(source.to_string(), Selection { column, card, note });
+        self.cache.borrow_mut().clear();
+    }
+
+    /// Does `action` on the board of the `.base` page that's open; `None`
+    /// when there's none (not a page, or not a kanban view).
+    fn board(&mut self, action: BoardAction, ctx: &Context) -> Option<Effect> {
+        let found = base_at_cursor(ctx)?;
+        found.file.as_ref()?;
+        let base = syntax::parse(&found.source).ok()?;
+        let input = self.input(&base, &found.source, None);
+        let view = &base.views[input.view];
+        if view.kind != syntax::Kind::Kanban {
+            return None;
+        }
+        let (property, _) = view.group_by.clone()?;
+        let results = match views::run(&input) {
+            Ok(r) => r,
+            Err(e) => return Some(Effect::Message(format!("Bases: {e}"))),
+        };
+        let columns = board::columns(view, &results, &self.index.pages);
+        if columns.is_empty() {
+            return Some(Effect::Message("Bases: the board has no columns".into()));
+        }
+        let rows = results.rows.clone();
+        let (c, k) = self.locate(&found.source, &columns, &rows);
+        let source = found.source.clone();
+        let beside = |d: i32| {
+            usize::try_from(c as i64 + i64::from(d))
+                .ok()
+                .filter(|&t| t < columns.len())
+        };
+        let card = columns[c].cards.get(k).map(|&r| rows[r]);
+        Some(match action {
+            BoardAction::Column(d) => {
+                let t = beside(d).unwrap_or(c);
+                let k = k.min(columns[t].cards.len().saturating_sub(1));
+                self.select(&source, &columns, &rows, t, k);
+                Effect::Redraw
+            }
+            BoardAction::Card(d) => {
+                let last = columns[c].cards.len().saturating_sub(1);
+                let k = (k as i64 + i64::from(d)).clamp(0, last as i64) as usize;
+                self.select(&source, &columns, &rows, c, k);
+                Effect::Redraw
+            }
+            BoardAction::Open => match card {
+                Some(page) => Effect::Open {
+                    path: self.index.pages[page].path.clone(),
+                },
+                None => Effect::Message("Bases: the column is empty".into()),
+            },
+            BoardAction::MoveCard(d) => {
+                let (Some(page), Some(t)) = (card, beside(d)) else {
+                    return Some(Effect::Message("Bases: no card, or no column there".into()));
+                };
+                let effect = self.move_card(
+                    page,
+                    &property,
+                    columns[c].group.as_deref(),
+                    columns[t].group.as_deref(),
+                );
+                // The selection follows the card (by its note).
+                self.selected.insert(
+                    source,
+                    Selection {
+                        column: t,
+                        card: 0,
+                        note: Some(self.index.pages[page].rel.clone()),
+                    },
+                );
+                self.cache.borrow_mut().clear();
+                effect
+            }
+            BoardAction::MoveColumn(d) => {
+                let Some(t) = beside(d) else {
+                    return Some(Effect::Message("Bases: no column there".into()));
+                };
+                let mut order = board::order(&columns);
+                order.swap(c, t);
+                self.select(&source, &columns, &rows, c, k);
+                if let Some(sel) = self.selected.get_mut(&source) {
+                    sel.column = t;
+                }
+                self.rewrite(ctx, &edit::Change::GroupOrder(Some(order)))
+            }
+            BoardAction::NewNote => {
+                let group = columns[c].group.clone();
+                self.new_in = Some((property, group));
+                Effect::Ask(vec![Question::Text {
+                    prompt: format!("Bases: a new note in {}", columns[c].label()),
+                    default: String::new(),
+                }])
+            }
+            BoardAction::Collapse => {
+                let label = columns[c].label().to_string();
+                let list = self.collapsed.entry(source).or_default();
+                match list.iter().position(|l| *l == label) {
+                    Some(i) => {
+                        list.remove(i);
+                    }
+                    None => list.push(label),
+                }
+                self.cache.borrow_mut().clear();
+                Effect::Redraw
+            }
+        })
+    }
+
+    /// Moves page `page`'s card from group `from` to group `to` of the
+    /// board grouped by `property`: writes the property in the note (no
+    /// value for "None"; in a list, the one value swapped), or moves the
+    /// file (grouped by `file.folder`).
+    fn move_card(
+        &self,
+        page: usize,
+        property: &str,
+        from: Option<&str>,
+        to: Option<&str>,
+    ) -> Effect {
+        let p = &self.index.pages[page];
+        if property == "file.folder" {
+            let name = p.path.file_name().expect("a note has a name");
+            let folder = to.map_or_else(|| self.root.clone(), |f| self.root.join(f));
+            return Effect::MoveNote {
+                from: p.path.clone(),
+                to: folder.join(name),
+            };
+        }
+        let key = property.strip_prefix("note.").unwrap_or(property);
+        if key.starts_with("file.") || key.starts_with("formula.") {
+            return Effect::Message(format!(
+                "Bases: cards grouped by {property} can't move (it isn't a note property)"
+            ));
+        }
+        let text = match std::fs::read_to_string(&p.path) {
+            Ok(t) => t,
+            Err(e) => return Effect::Message(format!("Bases: cannot read the note: {e}")),
+        };
+        let (mut properties, body) = crate::properties::parse(&text);
+        use crate::properties::{Property, Value};
+        let at = properties.iter().position(|q| q.key == key);
+        match (at, to) {
+            (Some(i), None) => {
+                properties.remove(i);
+            }
+            (None, None) => {}
+            (Some(i), Some(to)) => match &mut properties[i].value {
+                Value::List(items, _) => {
+                    match items.iter().position(|v| Some(v.as_str()) == from) {
+                        Some(j) => items[j] = to.to_string(),
+                        None => items.push(to.to_string()),
+                    }
+                }
+                value => *value = Value::guess(to),
+            },
+            (None, Some(to)) => properties.push(Property {
+                key: key.to_string(),
+                value: Value::guess(to),
+            }),
+        }
+        let new = crate::properties::write(&properties, body);
+        Effect::EditNote {
+            path: p.path.clone(),
+            from: 0,
+            to: text.lines().count(),
+            lines: new.lines().map(String::from).collect(),
+            expect: text.lines().map(String::from).collect(),
         }
     }
 
@@ -208,7 +463,15 @@ impl Bases {
             Err(e) => return Effect::Message(format!("Bases: {e}")),
         };
         let lines: Vec<String> = yaml.lines().map(String::from).collect();
-        self.chosen.insert(lines.join("\n"), shown);
+        let new_source = lines.join("\n");
+        self.chosen.insert(new_source.clone(), shown);
+        // A board's selection and collapsed columns stay with it.
+        if let Some(sel) = self.selected.get(&found.source).cloned() {
+            self.selected.insert(new_source.clone(), sel);
+        }
+        if let Some(c) = self.collapsed.get(&found.source).cloned() {
+            self.collapsed.insert(new_source, c);
+        }
         if let Some(rel) = &found.file {
             let path = self.root.join(rel);
             let old = match std::fs::read_to_string(&path) {
@@ -444,6 +707,11 @@ impl Bases {
     /// (`file.inFolder`), else beside the base, with the properties its
     /// filters ask for (`type == "book"`).
     fn new_note(&self, ctx: &Context, name: &str) -> Effect {
+        self.new_note_with(ctx, name, None)
+    }
+
+    /// A new note from the view, with `extra` (property, value) too.
+    fn new_note_with(&self, ctx: &Context, name: &str, extra: Option<(&str, &str)>) -> Effect {
         let Some(found) = base_at_cursor(ctx) else {
             return Effect::Message("Bases: no base here".into());
         };
@@ -456,6 +724,11 @@ impl Bases {
         let mut folder = None;
         for f in base.filters.iter().chain(view.filters.iter()) {
             required(f, &mut wants, &mut folder);
+        }
+        if let Some((key, value)) = extra {
+            let key = key.strip_prefix("note.").unwrap_or(key);
+            wants.retain(|(k, _)| k != key);
+            wants.push((key.to_string(), value.to_string()));
         }
         let beside = match (&found.file, ctx.note.and_then(|n| n.path)) {
             (Some(rel), _) => self.root.join(rel).parent().map(Path::to_path_buf),
@@ -618,7 +891,7 @@ impl Bases {
 
     /// "Create new base": `Untitled.base` (or the next free name) in the
     /// selected folder.
-    fn create(&self, ctx: &Context) -> Effect {
+    fn create(&mut self, ctx: &Context) -> Effect {
         let path = (0..)
             .map(|n| {
                 let name = if n == 0 {
@@ -630,10 +903,15 @@ impl Bases {
             })
             .find(|p| !p.exists())
             .expect("a free name");
-        Effect::CreateFile {
-            path,
-            text: NEW_BASE.into(),
-        }
+        // Its filters open with it.
+        self.pane.open();
+        Effect::Many(vec![
+            Effect::CreateFile {
+                path,
+                text: NEW_BASE.into(),
+            },
+            Effect::FocusPane(true),
+        ])
     }
 }
 
@@ -699,11 +977,80 @@ impl Plugin for Bases {
             PluginCommand::new("search-view", "Search view"),
             PluginCommand::new("copy-view", "Copy view"),
             PluginCommand::new("new-note", "New note from view"),
+            PluginCommand::new("card-next-column", "Move card to next column"),
+            PluginCommand::new("card-previous-column", "Move card to previous column"),
+            PluginCommand::new("column-right", "Move column right"),
+            PluginCommand::new("column-left", "Move column left"),
+            PluginCommand::new("new-in-column", "New note in this column"),
+            PluginCommand::new("collapse-column", "Collapse or expand column"),
+            PluginCommand::new("toggle-filters", "Show or hide filters").keys("Alt+F"),
+            PluginCommand::new("filters-size", "Change filters size").keys("Alt+M"),
         ]
     }
 
+    fn pane(&self, ctx: &Context, _width: u16, height: u16) -> Option<super::Pane> {
+        self.filter_pane(ctx, height)
+    }
+
+    fn pane_key(&mut self, key: KeyEvent, ctx: &Context) -> Effect {
+        self.filter_key(key, ctx)
+    }
+
+    /// The board's own keys (on a `.base` page showing a kanban view).
+    fn takes_key(&self, key: &KeyEvent) -> bool {
+        matches!(
+            key.code,
+            KeyCode::Left
+                | KeyCode::Right
+                | KeyCode::Up
+                | KeyCode::Down
+                | KeyCode::Enter
+                | KeyCode::Char('n' | ' ')
+        )
+    }
+
+    fn editor_key(&mut self, key: KeyEvent, ctx: &Context) -> Option<Effect> {
+        let plain = key.modifiers.is_empty();
+        let action = match key.code {
+            KeyCode::Left if plain => BoardAction::Column(-1),
+            KeyCode::Right if plain => BoardAction::Column(1),
+            KeyCode::Up if plain => BoardAction::Card(-1),
+            KeyCode::Down if plain => BoardAction::Card(1),
+            KeyCode::Enter if plain => BoardAction::Open,
+            KeyCode::Left if key.modifiers == KeyModifiers::SHIFT => BoardAction::MoveCard(-1),
+            KeyCode::Right if key.modifiers == KeyModifiers::SHIFT => BoardAction::MoveCard(1),
+            // Alt+←→ switch tabs: Alt+Shift moves a column.
+            KeyCode::Left if key.modifiers == KeyModifiers::ALT | KeyModifiers::SHIFT => {
+                BoardAction::MoveColumn(-1)
+            }
+            KeyCode::Right if key.modifiers == KeyModifiers::ALT | KeyModifiers::SHIFT => {
+                BoardAction::MoveColumn(1)
+            }
+            KeyCode::Char('n') if plain => BoardAction::NewNote,
+            KeyCode::Char(' ') if plain => BoardAction::Collapse,
+            _ => return None,
+        };
+        self.board(action, ctx)
+    }
+
     fn run(&mut self, id: &str, ctx: &Context) -> Effect {
+        let on_board = match id {
+            "card-next-column" => Some(BoardAction::MoveCard(1)),
+            "card-previous-column" => Some(BoardAction::MoveCard(-1)),
+            "column-right" => Some(BoardAction::MoveColumn(1)),
+            "column-left" => Some(BoardAction::MoveColumn(-1)),
+            "new-in-column" => Some(BoardAction::NewNote),
+            "collapse-column" => Some(BoardAction::Collapse),
+            _ => None,
+        };
+        if let Some(action) = on_board {
+            return self.board(action, ctx).unwrap_or_else(|| {
+                Effect::Message("Bases: open a .base file with a kanban view first".into())
+            });
+        }
         match id {
+            "toggle-filters" => self.toggle_filters(ctx),
+            "filters-size" => self.filters_size(ctx),
             "create-base" => self.create(ctx),
             "insert-base" => {
                 let Some(note) = ctx.note else {
@@ -809,6 +1156,14 @@ impl Plugin for Bases {
                 Effect::Redraw
             }
             ("edit-property", _) => self.answer_edit(answers),
+            (_, [Answer::Text(name)]) if self.new_in.is_some() => {
+                let (property, group) = self.new_in.take().expect("checked");
+                match (name.trim(), group) {
+                    ("", _) => Effect::None,
+                    (name, Some(group)) => self.new_note_with(ctx, name, Some((&property, &group))),
+                    (name, None) => self.new_note(ctx, name),
+                }
+            }
             _ => Effect::None,
         }
     }
@@ -852,7 +1207,15 @@ impl Plugin for Bases {
         }
         let rows = match syntax::parse(&text) {
             Ok(base) => {
-                let input = self.input(&base, &text, self.page_index(from));
+                let mut input = self.input(&base, &text, self.page_index(from));
+                // A board's selection, on a `.base` page (no note).
+                if from.is_none() && base.views[input.view].kind == syntax::Kind::Kanban {
+                    input.selected = views::run(&input).ok().map(|results| {
+                        let columns =
+                            board::columns(&base.views[input.view], &results, &self.index.pages);
+                        self.locate(&text, &columns, &results.rows)
+                    });
+                }
                 views::draw(&input, width)
             }
             Err(e) => views::error(&e),

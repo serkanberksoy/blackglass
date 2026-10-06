@@ -7601,3 +7601,177 @@ fn periodic_notes_sets_jumps_startup_and_deleting() {
     assert!(!work.exists(), "{}", app.message);
     assert!(todays.exists(), "the other set's note stays");
 }
+
+/// A kanban base and its projects.
+const BOARD: &[(&str, &str)] = &[
+    (
+        "Projects.base",
+        "filters: file.inFolder(\"Projects\")\nviews:\n  - type: kanban\n    name: Board\n    groupBy:\n      property: status\n      direction: ASC\n    groupOrder:\n      - Planned\n      - Doing\n      - Done\n    groupColors:\n      Doing: yellow\n      Done: green\n    order:\n      - file.name\n      - priority\n",
+    ),
+    (
+        "Projects/Garden.md",
+        "---\nstatus: Planned\npriority: high\n---\n",
+    ),
+    (
+        "Projects/Pond.md",
+        "---\nstatus: Doing\ntags: [water, Doing]\n---\n",
+    ),
+    ("Projects/Shed.md", "---\nstatus: Doing\n---\n"),
+    ("Projects/Fence.md", "---\nstatus: Done\n---\n"),
+    ("Projects/Idea.md", "no status\n"),
+    (
+        ".blackglass/plugins.toml",
+        "installed = [\"bases\"]\nenabled = [\"bases\"]\n",
+    ),
+];
+
+#[test]
+fn a_kanban_board_is_moved_around_by_key() {
+    let dir = vault("kanban", BOARD);
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "Projects.base"));
+    let rows = screen(&mut app, 120, 30).join("\n");
+    assert!(
+        rows.contains("Planned (1)") && rows.contains("Doing (2)") && rows.contains("Done (1)"),
+        "the columns in their groupOrder: {rows}"
+    );
+    assert!(!rows.contains("Idea"), "None isn't in groupOrder: hidden");
+    // → to Doing (Pond first), Shift+→ moves Pond to Done.
+    key(&mut app, KeyCode::Right);
+    press(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+    let pond = fs::read_to_string(dir.join("Projects/Pond.md")).unwrap();
+    assert!(pond.contains("status: Done"), "{pond}\n{}", app.message);
+    let rows = screen(&mut app, 120, 30).join("\n");
+    assert!(
+        rows.contains("Doing (1)") && rows.contains("Done (2)"),
+        "{rows}"
+    );
+    // Alt+Shift+← moves the Done column before Doing (groupOrder in the
+    // file); Alt+← alone is still the previous tab.
+    press(
+        &mut app,
+        KeyCode::Left,
+        KeyModifiers::ALT | KeyModifiers::SHIFT,
+    );
+    let base = fs::read_to_string(dir.join("Projects.base")).unwrap();
+    assert!(
+        base.contains("groupOrder:\n      - Planned\n      - Done\n      - Doing"),
+        "{base}\n{}",
+        app.message
+    );
+    let rows = screen(&mut app, 120, 30);
+    let heads = rows
+        .iter()
+        .find(|r| r.contains("Planned ("))
+        .expect("the column headings");
+    let (done, doing) = (
+        heads.find("Done (").unwrap(),
+        heads.find("Doing (").unwrap(),
+    );
+    assert!(done < doing, "shown in the new order: {heads}");
+    // Enter opens the selected card: Pond (it followed its move).
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(active_path(&app), Some(note(&app, "Projects/Pond.md")));
+    // n: a new note in the selected column, with its value.
+    app.open(&note(&app, "Projects.base"));
+    key(&mut app, KeyCode::Left);
+    typing(&mut app, "n");
+    typing(&mut app, "Wall");
+    key(&mut app, KeyCode::Enter);
+    let wall = fs::read_to_string(dir.join("Projects/Wall.md")).unwrap();
+    assert!(wall.contains("status: Planned"), "{wall}\n{}", app.message);
+}
+
+/// The text of the screen rows from the one containing `from` to the one
+/// containing `to`.
+fn rows_between(rows: &[String], from: &str, to: &str) -> String {
+    let a = rows.iter().position(|r| r.contains(from)).unwrap_or(0);
+    let b = rows
+        .iter()
+        .rposition(|r| r.contains(to))
+        .unwrap_or(rows.len() - 1);
+    rows[a..=b.max(a)].join("\n")
+}
+
+#[test]
+fn a_bases_filters_are_changed_in_a_pane_with_live_results() {
+    let dir = vault("bases-filter-pane", BOARD);
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "Projects.base"));
+    // Alt+F: the filters above the results, with the focus.
+    alt(&mut app, KeyCode::Char('f'));
+    assert_eq!(app.focus, Focus::Pane);
+    let rows = screen(&mut app, 120, 40);
+    let pane = rows_between(&rows, "Filters", "add filter");
+    assert!(
+        pane.contains("All views") && pane.contains("file.folder") && pane.contains("is in folder"),
+        "{pane}"
+    );
+    // a: a new filter; its property, then its value, typed: the results
+    // follow at each key.
+    key(&mut app, KeyCode::Char('a'));
+    typing(&mut app, "status");
+    key(&mut app, KeyCode::Enter);
+    typing(&mut app, "Doing");
+    let rows = screen(&mut app, 120, 40).join("\n");
+    assert!(rows.contains("2 results"), "Pond and Shed: {rows}");
+    key(&mut app, KeyCode::Enter);
+    let base = fs::read_to_string(dir.join("Projects.base")).unwrap();
+    assert!(
+        base.contains(
+            "filters:\n  and:\n    - file.inFolder(\"Projects\")\n    - status == \"Doing\""
+        ),
+        "{base}"
+    );
+    // o: another operator; d: deleted.
+    key(&mut app, KeyCode::Char('o'));
+    let rows = screen(&mut app, 120, 40).join("\n");
+    assert!(
+        rows.contains("is not") && rows.contains("3 results"),
+        "Garden, Fence and Idea (no status): {rows}"
+    );
+    key(&mut app, KeyCode::Char('d'));
+    let rows = screen(&mut app, 120, 40).join("\n");
+    assert!(rows.contains("5 results"), "{rows}");
+    // Tab: this view's own filters (none yet).
+    key(&mut app, KeyCode::Tab);
+    let rows = screen(&mut app, 120, 40);
+    let pane = rows_between(&rows, "Filters", "add filter");
+    assert!(
+        pane.contains("This view") && !pane.contains("is in folder"),
+        "{pane}"
+    );
+    key(&mut app, KeyCode::Tab);
+    // Alt+M: maximized, then minimized to a summary line.
+    alt(&mut app, KeyCode::Char('m'));
+    alt(&mut app, KeyCode::Char('m'));
+    let rows = screen(&mut app, 120, 40);
+    assert!(
+        rows.iter()
+            .any(|r| r.contains("filters:") && r.contains("file.folder is in folder Projects")),
+        "{}",
+        rows.join("\n")
+    );
+    // Esc: back to the results; Alt+F hides the pane.
+    key(&mut app, KeyCode::Esc);
+    assert_eq!(app.focus, Focus::Editor);
+    alt(&mut app, KeyCode::Char('f'));
+    let rows = screen(&mut app, 120, 40).join("\n");
+    assert!(
+        !rows.contains("add filter") && !rows.contains("filters:"),
+        "{rows}"
+    );
+}
+
+#[test]
+fn a_new_base_opens_with_its_filters() {
+    let dir = vault("bases-new-pane", BOARD);
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    run_palette(&mut app, "bases create new base");
+    assert_eq!(app.focus, Focus::Pane, "{}", app.message);
+    let rows = screen(&mut app, 120, 40).join("\n");
+    assert!(
+        rows.contains("Filters") && rows.contains("add filter"),
+        "{rows}"
+    );
+}

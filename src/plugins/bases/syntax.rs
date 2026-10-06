@@ -41,6 +41,12 @@ pub struct View {
     pub summaries: Vec<(String, String)>,
     /// Other settings (`markers`, `separator`, `hideEmptyColumns` …).
     pub options: Vec<(String, String)>,
+    /// The groups shown, in order (`groupOrder`; `None` in it: the group
+    /// of notes without a value); `None`: every group, sorted.
+    pub group_order: Option<Vec<Option<String>>>,
+    /// A color per group (`groupColors`, blackglass's: Obsidian ignores
+    /// it): group → color name.
+    pub group_colors: Vec<(String, String)>,
 }
 
 impl View {
@@ -196,6 +202,8 @@ fn default_view() -> View {
         sort: Vec::new(),
         summaries: Vec::new(),
         options: Vec::new(),
+        group_order: None,
+        group_colors: Vec::new(),
     }
 }
 
@@ -252,6 +260,27 @@ fn view(y: &Yaml) -> Result<View, String> {
             .filter_map(|(k, s)| Some((scalar(k)?, scalar(s)?)))
             .collect();
     }
+    match &y["groupOrder"] {
+        Yaml::Array(groups) => {
+            v.group_order = Some(
+                groups
+                    .iter()
+                    .map(|g| match g {
+                        Yaml::Null => None,
+                        g => scalar(g),
+                    })
+                    .collect(),
+            );
+        }
+        Yaml::BadValue | Yaml::Null => {}
+        _ => return Err("groupOrder is a list of groups".into()),
+    }
+    if let Some(Yaml::Hash(h)) = key(y, "groupColors") {
+        v.group_colors = h
+            .iter()
+            .filter_map(|(k, c)| Some((scalar(k)?, scalar(c)?)))
+            .collect();
+    }
     if let Yaml::Hash(h) = y {
         for (k, val) in h {
             let (Some(k), Some(val)) = (scalar(k), scalar(val)) else {
@@ -300,5 +329,31 @@ mod tests {
         );
         assert!(parse("a: [").unwrap_err().contains("YAML"));
         assert_eq!(parse("").unwrap().views.len(), 1, "every note, in a table");
+    }
+
+    #[test]
+    fn group_order_and_colors() {
+        let base = parse(
+            "views:\n  - type: kanban\n    groupBy:\n      property: note.status\n      direction: ASC\n    groupOrder:\n      - Planned\n      - null\n      - Done\n    groupColors:\n      Planned: blue\n      Done: green\n    cardColor: formula.color\n",
+        )
+        .unwrap();
+        let v = &base.views[0];
+        assert_eq!(
+            v.group_order,
+            Some(vec![Some("Planned".into()), None, Some("Done".into())])
+        );
+        assert_eq!(
+            v.group_colors,
+            [
+                ("Planned".into(), "blue".into()),
+                ("Done".into(), "green".into())
+            ]
+        );
+        assert_eq!(v.option("cardColor"), Some("formula.color"));
+        assert_eq!(
+            parse("views:\n  - type: kanban\n").unwrap().views[0].group_order,
+            None
+        );
+        assert!(parse("views:\n  - groupOrder: x\n").is_err());
     }
 }

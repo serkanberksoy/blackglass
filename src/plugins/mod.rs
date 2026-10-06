@@ -185,6 +185,9 @@ pub enum Effect {
     },
     /// Show the file or folder at `path` (absolute) in the file explorer.
     Reveal(PathBuf),
+    /// Give the plugin's pane above the note the focus (`true`), or give
+    /// it back to the note.
+    FocusPane(bool),
     /// Do a result row's action (`plugin:<id>:<payload>` reaches
     /// [`Plugin::row_action`]): a suggestion telling its plugin it was
     /// chosen.
@@ -202,6 +205,50 @@ pub struct Suggestions {
     pub items: Vec<(String, String)>,
     pub effects: Vec<(usize, Effect)>,
     pub alts: Vec<(usize, String)>,
+}
+
+/// How much of the note's side a plugin's pane takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaneSize {
+    /// One line (a summary).
+    Minimized,
+    /// Half.
+    Half,
+    /// All but a few rows of the note.
+    Maximized,
+}
+
+impl PaneSize {
+    /// The rows it takes of `height` (with its two rules).
+    pub fn rows(self, height: u16) -> u16 {
+        match self {
+            PaneSize::Minimized => 3,
+            PaneSize::Half => (height / 2).max(6),
+            PaneSize::Maximized => height.saturating_sub(5).max(6),
+        }
+        .min(height.saturating_sub(3))
+    }
+
+    /// The next size (Alt+M): half, maximized, minimized, half …
+    pub fn next(self) -> PaneSize {
+        match self {
+            PaneSize::Half => PaneSize::Maximized,
+            PaneSize::Maximized => PaneSize::Minimized,
+            PaneSize::Minimized => PaneSize::Half,
+        }
+    }
+}
+
+/// A plugin's pane above the active note (Bases' filters).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Pane {
+    pub title: String,
+    pub size: PaneSize,
+    /// Its lines, for the rows between its rules
+    /// (`size.rows(height) - 2`).
+    pub lines: Vec<Line<'static>>,
+    /// Where the text cursor is (column, line), while text is typed.
+    pub cursor: Option<(u16, u16)>,
 }
 
 /// A row of a plugin's sidebar tab.
@@ -375,6 +422,19 @@ pub trait Plugin {
 
     /// A key while the panel has the focus.
     fn panel_key(&mut self, _key: KeyEvent, _ctx: &Context) -> Effect {
+        Effect::None
+    }
+
+    /// A pane above the active note, `width` × `height` being the note's
+    /// side (Bases' filters on a `.base` page); `None`: none. Asked while
+    /// drawing: keep it cheap.
+    fn pane(&self, _ctx: &Context, _width: u16, _height: u16) -> Option<Pane> {
+        None
+    }
+
+    /// A key while the pane has the focus ([`Effect::FocusPane`] gives
+    /// it back).
+    fn pane_key(&mut self, _key: KeyEvent, _ctx: &Context) -> Effect {
         Effect::None
     }
 
@@ -745,6 +805,23 @@ impl Plugins {
                 .panel(ctx, width)
                 .map(|lines| (e.plugin.manifest().id, lines))
         })
+    }
+
+    /// The first enabled plugin's pane above the note: (plugin id, pane).
+    pub fn pane(&self, ctx: &Context, width: u16, height: u16) -> Option<(&'static str, Pane)> {
+        self.entries.iter().filter(|e| e.enabled).find_map(|e| {
+            e.plugin
+                .pane(ctx, width, height)
+                .map(|pane| (e.plugin.manifest().id, pane))
+        })
+    }
+
+    /// A key for plugin `id`'s pane.
+    pub fn pane_key(&mut self, id: &str, key: KeyEvent, ctx: &Context) -> Effect {
+        match self.enabled_mut(id) {
+            Some(plugin) => plugin.pane_key(key, ctx),
+            None => Effect::None,
+        }
     }
 
     /// The enabled plugins' sidebar tabs: (plugin id, title).

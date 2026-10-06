@@ -103,6 +103,12 @@ switches between live preview, source mode (every line raw) and view mode
   pages (Options: Editor, Keyboard shortcuts, Plugins; Plugin options: each
   plugin's settings), on the right the page. Typing searches every page;
   every command's keys can be changed in Keyboard shortcuts.
+- Bases: on a `.base` page, **Alt+F** shows the filters above the
+  results (rows of property, operator and value; the results follow every
+  key; Tab switches between every view's filters and this view's), and
+  **Alt+M** makes them half, nearly all or one line of the screen. A
+  kanban board moves with keys: ←→↑↓ choose, Shift+←→ move a card,
+  Alt+Shift+←→ move a column, **n** a new note in it.
 - **{open-plugins}** (the settings' Plugins page) installs plugins:
   Dataview (queries in `dataview` blocks), Templater (templates: insert
   one with **Alt+E**, apply one to the note, folder and file regex

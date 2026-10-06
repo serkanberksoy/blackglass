@@ -117,6 +117,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         (None, Focus::Sidebar) => sidebar::cursor(app),
         (None, Focus::Editor) => app.view().and_then(|v| v.cursor),
         (None, Focus::Panel | Focus::Backlinks) => None,
+        (None, Focus::Pane) => app
+            .areas
+            .pane_cursor
+            .map(|(x, y)| ratatui::layout::Position::new(x, y)),
     };
     if let Some(cursor) = cursor {
         frame.set_cursor_position(cursor);
@@ -132,6 +136,23 @@ fn draw_notes(frame: &mut Frame, area: Rect, app: &mut App, theme: &Theme) {
     ])
     .areas(area);
     draw_tabs(frame.buffer_mut(), tabs, app, theme);
+    // A plugin's pane takes the top of the note's side (Bases' filters).
+    app.areas.pane_cursor = None;
+    let pane = app.with_context(|ctx| app.plugins.borrow().pane(ctx, body.width, body.height));
+    let body = match pane {
+        Some((id, pane)) if body.height >= 8 && !app.tabs.is_empty() => {
+            let height = pane.size.rows(body.height);
+            let [top, rest] =
+                Layout::vertical([Constraint::Length(height), Constraint::Min(1)]).areas(body);
+            draw_pane(frame.buffer_mut(), top, &pane, app, theme);
+            app.areas.pane = Some((id, top));
+            rest
+        }
+        _ => {
+            app.areas.pane = None;
+            body
+        }
+    };
     // The backlinks take the bottom of the note's side (Alt+L).
     let body = if app.backlinks && !app.tabs.is_empty() && body.height >= 8 {
         let height = (body.height / 3).clamp(3, 12);
@@ -456,6 +477,48 @@ fn draw_backlinks(buf: &mut Buffer, area: Rect, app: &mut App, theme: &Theme) {
     }
 }
 
+/// A plugin's pane above the note: a rule with its title, its lines, a
+/// rule under them.
+fn draw_pane(
+    buf: &mut Buffer,
+    area: Rect,
+    pane: &crate::plugins::Pane,
+    app: &mut App,
+    theme: &Theme,
+) {
+    buf.set_style(area, theme.on(TEXT, BG_SIDEBAR));
+    let rule = theme.glyph("─", "-").repeat(area.width as usize);
+    let focused = app.focus == Focus::Pane;
+    let edge = if focused { ACCENT } else { FAINT };
+    for y in [area.y, area.bottom().saturating_sub(1)] {
+        put(
+            buf,
+            area.x,
+            y,
+            &rule,
+            area.width,
+            theme.on(edge, BG_SIDEBAR),
+        );
+    }
+    put(
+        buf,
+        area.x + 2,
+        area.y,
+        &format!(" {} ", pane.title),
+        area.width.saturating_sub(2),
+        theme.bold(if focused { ACCENT } else { MUTED }, BG_SIDEBAR),
+    );
+    let inner = area.height.saturating_sub(2);
+    for (i, line) in pane.lines.iter().take(inner as usize).enumerate() {
+        let y = area.y + 1 + i as u16;
+        let row = Rect::new(area.x + 1, y, area.width.saturating_sub(2), 1);
+        buf.set_line(row.x, row.y, line, row.width);
+    }
+    if focused && let Some((x, y)) = pane.cursor.filter(|(_, y)| *y < inner) {
+        app.areas.pane_cursor = Some((area.x + 1 + x, area.y + 1 + y));
+    }
+}
+
 /// What to do when no note is open, with the keys those commands have now.
 fn draw_empty(buf: &mut Buffer, area: Rect, app: &App, theme: &Theme) {
     let keys = |id: &str| crate::keymap::describe(app.keymap.keys(id));
@@ -616,6 +679,9 @@ fn hints(app: &App) -> String {
             "←→↑↓ day  PgUp/PgDn month  ⏎ day's note  w week  m month  t today  Esc back"
         }
         (Focus::Backlinks, _) => "↑↓ choose  ⏎ open  l link a mention  Esc note  Alt+L hide",
+        (Focus::Pane, _) => {
+            "↑↓ row  ←→ cell  ⏎ edit  o operator  a add  g group  d delete  c all/any  Tab scope  Esc results"
+        }
         (Focus::Editor, _) if app.view().is_some_and(|v| v.reading) => {
             "Tab next link  ⏎ follow  ↑↓ move  Esc edit  Alt+V mode"
         }

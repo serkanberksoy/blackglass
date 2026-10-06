@@ -1,6 +1,6 @@
 # Version history
 
-Current version: **0.82.0**
+Current version: **0.84.0**
 
 ## Versioning rules
 
@@ -26,6 +26,55 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 0.84.0 (2026-10-06)
+
+### Added
+- **W-131 Bases filter pane** (BA-51a): on a `.base` page, Alt+F shows
+  the filters in a pane above the results: rows of property, operator
+  (is, is not, contains, starts with, is empty, >, has tag, is in folder
+  …) and value, in "all / any / none of these" groups, nested; Tab
+  switches between every view's filters and this view's. ↑↓ choose, ←→
+  the cell, Enter edits it (the operator: the next one), `a` adds a
+  filter, `g` a group, `d` deletes, `o` changes the operator, `c` the
+  group's all / any / none. Every key is written to the file, so the
+  results below follow as you type. Alt+M makes the pane half, nearly
+  all or one summary line of the screen; Esc goes back to the results;
+  "Create new base" opens with it. Written as the original writes
+  filters (`and:` lists of plain expressions); expressions it doesn't
+  make rows of stay as formula rows.
+- Plugins can show a pane above the note (`Plugin::pane`, `pane_key`,
+  `Effect::FocusPane`).
+
+### Changed
+- A base's YAML keeps its keys in place when a view is changed, and
+  writes expressions without quotes where YAML allows (as the original
+  does).
+
+## 0.83.0 (2026-10-06)
+
+### Added
+- **Bases kanban, as Obsidian 1.14 has it** (W-77; BA-46, BA-47,
+  BA-47a): the columns follow the view's `groupOrder` (their order; a
+  value no note has is an empty column; `null` is the None column of
+  notes without a value; a value left out is hidden), as Obsidian writes
+  it. On a `.base` page the board is driven by keys: ←→↑↓ choose a card,
+  Enter opens it, Shift+←→ moves it to the next column (writing its
+  property in the note: a list property swaps the one value, None
+  removes it, `file.folder` moves the file), Alt+Shift+←→ moves the
+  column (saved as `groupOrder`), `n` makes a note in the column with its
+  value, Space collapses the column; each is a command too ("Bases: Move
+  card to next column" …). Colors: `groupColors` (a color per column)
+  and `cardColor` (a property or formula naming a card's color),
+  blackglass's own keys that Obsidian ignores; named colors, so themes
+  change them. The first property is a card's title.
+- `example_vault/Examples/Kanban.md` and `Projects.base`: a project
+  board.
+
+### Changed
+- A column of notes without a value is "None" (was "(empty)"), and comes
+  last, as in Obsidian.
+- A `.base` page passes keys to plugins (it's read-only otherwise).
 
 ## 0.82.0 (2026-10-06)
 

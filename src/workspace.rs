@@ -41,6 +41,8 @@ pub enum Focus {
     Panel,
     /// The backlinks under the note.
     Backlinks,
+    /// A plugin's pane above the note (Bases' filters).
+    Pane,
 }
 
 /// What to do after the unsaved-changes question is answered.
@@ -227,6 +229,10 @@ pub struct Areas {
     pub settings_rows: Vec<(Rect, usize)>,
     /// The backlinks' rows, by backlink.
     pub backlinks: Vec<(Rect, usize)>,
+    /// The plugin pane above the note: whose it is, and its area.
+    pub pane: Option<(&'static str, Rect)>,
+    /// Where its text cursor is.
+    pub pane_cursor: Option<(u16, u16)>,
 }
 
 /// Opens a file outside blackglass (`Err`: why it couldn't).
@@ -1019,8 +1025,20 @@ impl App {
             }
             Focus::Panel => self.panel_key(key),
             Focus::Backlinks => self.backlinks_key(key),
+            Focus::Pane => self.pane_key(key),
         }
         Action::Continue
+    }
+
+    /// A key for the plugin pane above the note; without one, the note's.
+    fn pane_key(&mut self, key: KeyEvent) {
+        let id = self.with_context(|ctx| self.plugins.borrow().pane(ctx, 80, 24).map(|(id, _)| id));
+        let Some(id) = id else {
+            self.focus = Focus::Editor;
+            return;
+        };
+        let effect = self.with_context(|ctx| self.plugins.borrow_mut().pane_key(id, key, ctx));
+        self.apply_effect(id, "pane", effect);
     }
 
     /// The link suggestion list's keys (W-23): ↑/↓ choose, Enter or Tab
@@ -1435,6 +1453,7 @@ impl App {
         let open: Vec<Focus> = [
             (Focus::Sidebar, true),
             (Focus::Panel, self.panel),
+            (Focus::Pane, self.areas.pane.is_some()),
             (Focus::Editor, has_note),
             (Focus::Backlinks, self.backlinks && has_note),
         ]
@@ -1984,6 +2003,12 @@ impl App {
         match effect {
             Effect::None => {}
             Effect::RowAction(action) => self.row_action(&action),
+            Effect::FocusPane(true) => self.focus = Focus::Pane,
+            Effect::FocusPane(false) => {
+                if self.focus == Focus::Pane {
+                    self.focus = Focus::Editor;
+                }
+            }
             Effect::Message(m) => self.message = m,
             Effect::FilesChanged(message) => {
                 self.files_changed();
@@ -2518,7 +2543,14 @@ impl App {
     /// Offers an editor key to the plugins (Advanced Tables' Tab); true if
     /// one took it.
     fn plugin_editor_key(&mut self, key: KeyEvent) -> bool {
-        let editable = self.view().is_some_and(|v| !v.reading);
+        // A `.base` page (read-only) too: its board's keys.
+        let editable = self.view().is_some_and(|v| {
+            !v.reading
+                || v.editor
+                    .lines
+                    .first()
+                    .is_some_and(|l| l.starts_with("%% base:"))
+        });
         if !editable || !self.plugins.borrow().takes_key(&key) {
             return false;
         }
@@ -4372,6 +4404,12 @@ impl App {
             None => match self.focus {
                 Focus::Sidebar => self.sidebar.paste(text, &self.vault),
                 Focus::Panel | Focus::Backlinks => {}
+                Focus::Pane => {
+                    // Typed text: one key at a time.
+                    for c in line.chars() {
+                        self.pane_key(KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE));
+                    }
+                }
                 Focus::Editor => {
                     if let Some(view) = self.tabs.get_mut(self.active) {
                         view.handle_paste(text, &mut self.shared);

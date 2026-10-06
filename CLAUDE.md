@@ -176,6 +176,17 @@ cargo test --test project            # versions, feature ↔ test mapping, --hel
   plugins'. A suggestion can put in other text with Shift+Enter
   (`Suggestions::alts`) and tell its plugin it was chosen
   (`Effect::RowAction` → `Plugin::row_action`).
+- A Bases kanban on a `.base` page takes its keys through
+  `Plugin::editor_key` (the page is read-only, but `plugin_editor_key`
+  lets a `%% base:` page through); its selection and collapsed columns
+  are kept by the base's YAML text (moved along in `Bases::rewrite`).
+  `.base` YAML stays Obsidian's (`groupOrder`, `null`); blackglass's
+  extras are keys Obsidian ignores (`groupColors`, `cardColor`).
+- A plugin can show a pane above the note (`Plugin::pane`: lines for
+  the rows `PaneSize::rows` gives it, asked while drawing; `pane_key`
+  while it has the focus, `Focus::Pane`; `Effect::FocusPane`). Bases'
+  filter pane keeps its own copy of the rows (`pane::Work`) and writes
+  every change to the `.base` file, so its page redraws the results.
 - New notes the user makes go through `App::create_new_note`, which gives
   them a note ID when the vault's Notes settings ask for one
   (`note_ids`, `.blackglass/notes.toml`); only notes with names of their

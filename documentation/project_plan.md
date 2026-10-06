@@ -247,8 +247,11 @@ In order:
       as Obsidian 1.14 has them.
     - ✅ **Periodic Notes, the rest (0.82.0):** its gaps in
       `requirements/periodic_requirements.md` (PN-27 ribbon icons ✗).
-    - **Bases kanban, more** (to plan, not started): colors of the
-      columns and cards, moving cards between columns with keys.
+    - ✅ **Bases kanban (0.83.0):** Obsidian 1.14's kanban (`groupOrder`,
+      None), keys to move cards and columns, new notes in a column,
+      colors. Next: the Group menu and collapsible groups for every
+      layout (BA-47b), and cards on boards embedded in notes (a mdedit
+      API for actions on part of a line).
 
 ## 2. M1: Workspace ✅
 

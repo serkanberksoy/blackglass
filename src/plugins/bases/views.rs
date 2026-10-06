@@ -33,6 +33,10 @@ pub struct Input<'a> {
     pub now: NaiveDateTime,
     /// Only rows with a shown value containing this (BA-53), any case.
     pub search: Option<&'a str>,
+    /// A board's selected card: (column, card), on a `.base` page.
+    pub selected: Option<(usize, usize)>,
+    /// A board's collapsed columns (their labels).
+    pub collapsed: &'a [String],
 }
 
 /// A view's results: the notes, and their column values.
@@ -296,7 +300,7 @@ fn fit(text: &str, width: usize) -> String {
 }
 
 /// The row indexes in each group, in order: (group value, rows).
-fn grouped(results: &Results) -> Vec<(Option<Value>, Vec<usize>)> {
+pub(super) fn grouped(results: &Results) -> Vec<(Option<Value>, Vec<usize>)> {
     let mut out: Vec<(Option<Value>, Vec<usize>)> = Vec::new();
     for (r, g) in results.groups.iter().enumerate() {
         match out.last_mut() {
@@ -628,10 +632,7 @@ fn kanban(input: &Input, view: &View, results: &Results, width: usize) -> Result
         return Err("a kanban view needs groupBy (the property its columns are)".into());
     }
     let pages = input.pages;
-    let mut columns = grouped(results);
-    if view.option("hideEmptyColumns") == Some("true") {
-        columns.retain(|(_, rows)| !rows.is_empty());
-    }
+    let columns = super::board::columns(view, results, pages);
     if columns.is_empty() {
         return Ok(Vec::new());
     }
@@ -641,17 +642,60 @@ fn kanban(input: &Input, view: &View, results: &Results, width: usize) -> Result
         .and_then(|s| s.parse().ok())
         .unwrap_or(24usize)
         .min((width.saturating_sub(3 * (n - 1)) / n).max(6));
-    let mut drawn: Vec<Vec<String>> = Vec::new();
-    for (g, rows) in &columns {
-        let name = g
-            .as_ref()
-            .map_or("(empty)".into(), |g| group_name(g, pages));
-        let mut lines = vec![fit(&format!("{name} ({})", rows.len()), w), "─".repeat(w)];
-        for &r in rows {
-            lines.push(fit(&format!("▪ {}", title(results, r, pages)), w));
+    // `cardColor` (blackglass's): a property or formula naming a color.
+    let card_color = match view.option("cardColor") {
+        Some(p) => Some(expr::parse(p).map_err(|e| format!("cardColor {p}: {e}"))?),
+        None => None,
+    };
+    let selected_bg = crate::ui::theme::paint(crate::ui::theme::BG_SELECTED);
+    let mut drawn: Vec<Vec<Vec<Span<'static>>>> = Vec::new();
+    for (c, column) in columns.iter().enumerate() {
+        let tint = column.color.map_or_else(accent, |color| {
+            Style::new().fg(color).add_modifier(Modifier::BOLD)
+        });
+        let collapsed = input.collapsed.iter().any(|l| l == column.label());
+        let marker = if collapsed { "▸ " } else { "" };
+        let mut head = tint;
+        if input.selected.is_some_and(|(sc, _)| sc == c) {
+            head = head.add_modifier(Modifier::UNDERLINED);
+        }
+        let heading = format!("{marker}{} ({})", column.label(), column.cards.len());
+        let mut lines = vec![
+            vec![Span::styled(fit(&heading, w), head)],
+            vec![Span::styled(
+                "─".repeat(w),
+                column.color.map_or(DIM, |c| Style::new().fg(c)),
+            )],
+        ];
+        if collapsed {
+            drawn.push(lines);
+            continue;
+        }
+        for (k, &r) in column.cards.iter().enumerate() {
+            let bullet = match &card_color {
+                Some(e) => expr::eval(e, &mut scope(input, results.rows[r]))
+                    .ok()
+                    .and_then(|v| super::board::color(&v.display(pages)))
+                    .or(column.color),
+                None => column.color,
+            };
+            let bullet_style = bullet.map_or(Style::new(), |c| Style::new().fg(c));
+            let mut title_style = Style::new();
+            let mut bullet_style = bullet_style;
+            if input.selected == Some((c, k)) {
+                title_style = title_style.bg(selected_bg).add_modifier(Modifier::BOLD);
+                bullet_style = bullet_style.bg(selected_bg);
+            }
+            lines.push(vec![
+                Span::styled("▪ ", bullet_style),
+                Span::styled(
+                    fit(&title(results, r, pages), w.saturating_sub(2)),
+                    title_style,
+                ),
+            ]);
             for (_, v) in details(results, r, pages) {
-                if Some(v.as_str()) != g.as_ref().map(|g| group_name(g, pages)).as_deref() {
-                    lines.push(fit(&format!("  {v}"), w));
+                if Some(v.as_str()) != column.group.as_deref() {
+                    lines.push(vec![Span::raw(fit(&format!("  {v}"), w))]);
                 }
             }
         }
@@ -660,15 +704,27 @@ fn kanban(input: &Input, view: &View, results: &Results, width: usize) -> Result
     let height = drawn.iter().map(Vec::len).max().unwrap_or(0);
     let mut out = Vec::new();
     for i in 0..height {
-        let parts: Vec<String> = drawn
-            .iter()
-            .map(|c| c.get(i).cloned().unwrap_or_else(|| " ".repeat(w)))
-            .collect();
-        let style = if i == 0 { accent() } else { Style::new() };
-        out.push((
-            Line::styled(parts.join(" │ ").trim_end().to_string(), style),
-            None,
-        ));
+        let mut spans = Vec::new();
+        for (c, column) in drawn.iter().enumerate() {
+            if c > 0 {
+                spans.push(Span::styled(" │ ", DIM));
+            }
+            match column.get(i) {
+                Some(cell) => spans.extend(cell.iter().cloned()),
+                None => spans.push(Span::raw(" ".repeat(w))),
+            }
+        }
+        // No trailing blanks.
+        while spans
+            .last()
+            .is_some_and(|s| s.content.trim().is_empty() && s.style.bg.is_none())
+        {
+            spans.pop();
+        }
+        if let Some(last) = spans.last_mut().filter(|s| s.style.bg.is_none()) {
+            last.content = last.content.trim_end().to_string().into();
+        }
+        out.push((Line::from(spans), None));
     }
     Ok(out)
 }

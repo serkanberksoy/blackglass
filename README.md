@@ -50,7 +50,7 @@ blackglass --help               # all options and keys
 one, **Ctrl+G** searches the vault, **Ctrl+B** moves between the sidebar and
 the editor, **Ctrl+Q** quits.
 
-**Version:** 0.82.0 · **Stage:** M1 (workspace) and M2 (commands & plugins) complete; M3 (vault features, Zettelkasten) nearly · [Version history](VERSION.md)
+**Version:** 0.84.0 · **Stage:** M1 (workspace) and M2 (commands & plugins) complete; M3 (vault features, Zettelkasten) nearly · [Version history](VERSION.md)
 
 ```
  Files  Search  Tags           │ 2026-08-08 ×  2026-08-09 ×  +
@@ -98,7 +98,7 @@ uses when they're there:
 
 ## Features
 
-118 of 130 tracked features are done (`requirements/features.md`).
+119 of 131 tracked features are done (`requirements/features.md`).
 
 | Area | What you get |
 |------|--------------|
@@ -128,7 +128,7 @@ uses when they're there:
 | Templater plugin | All of Templater: templates in `Templates/` with `tp.date`, `tp.file` (title, include, cursors, `create_new`, `move`, `rename` …), `tp.frontmatter`, `tp.system` questions (prompts of one or more lines, choices of one or many), `tp.web` (a daily quote, a random picture, web requests, fetched in the background), `tp.config`, `tp.hooks`, and `tp.user` (your scripts, and system commands if you turn them on); JavaScript in `<%* %>`. Insert one (Alt+E), apply one to the open note, create a note from one, run the commands in a note, or at startup; folder and file regex templates fill new notes; "Jump to next cursor location"; `<% %>` tags shown as written (`example_vault/Templates/Templater tour.md`) |
 | Git plugin | Backs the vault up to Git: commit-and-sync (commit, pull, push) from the palette or every N minutes, a pull on start, a commit message template; runs your own `git` in the background, and notes a pull changed are shown again; the branch and what's waiting in the status bar; a Git tab in the sidebar lists the changes (`s` stage, `d` discard, `c` commit); a note's diff and the history open in read-only tabs; the open note's changed lines marked in a margin (`+`, `~`, `-`), or who wrote each line; settings for a tree of changes, squashing before a push, side-by-side diffs |
 | Advanced Tables plugin | In a table Tab / Shift+Tab / Enter move between cells and line it up; commands insert, delete, move, align and sort rows and columns, transpose, export CSV, and evaluate `<!-- TBLFM: … -->` formulas (`example_vault/Examples/Tables.md`); a Table tab in the sidebar with the operations |
-| Bases plugin | Database views of your notes: ```` ```base ```` blocks and `.base` files filter notes by their properties, compute formulas, and show them as a table (grouped, with summaries), a list, cards or a kanban board; switch, sort, group, filter and search views from the palette, embed a base or one of its views (`![[Library.base#Cards]]`), click a row to change its properties, copy or export a view, a new note from a view (`example_vault/Examples/Library.base`) |
+| Bases plugin | Database views of your notes: ```` ```base ```` blocks and `.base` files filter notes by their properties, compute formulas, and show them as a table (grouped, with summaries), a list, cards or a kanban board (the original's, from its 1.14: `groupOrder`, a None column; keys move cards between columns, which writes the note's property, and move columns; new notes in a column; colored columns and cards: `example_vault/Examples/Kanban.md`); a filter pane above the results (Alt+F; Alt+M sizes it): rows of property, operator and value, the results updating as you type; switch, sort, group, filter and search views from the palette, embed a base or one of its views (`![[Library.base#Cards]]`), click a row to change its properties, copy or export a view, a new note from a view (`example_vault/Examples/Library.base`) |
 | Tasks plugin | Due, scheduled and start dates, priorities, recurrence and dependencies on tasks; ```` ```tasks ```` blocks filter, sort and group every task in the vault (a click checks one off); toggling writes done dates and a recurring task's next occurrence; create, edit and postpone tasks from the palette (`example_vault/Examples/Tasks.md`); fields suggested as you type, `show tree`, `columns by`, regex filters |
 | Task Archiver plugin | Done tasks move under an Archived heading (in the note, another note or today's daily note), in a date tree of list items if you like, with the date and their headings; delete done tasks, archive the heading under the cursor, sort a list (items, open, done), check a task off and archive it; rules send some tasks elsewhere or delete them (`example_vault/Examples/Task Archiver.md`) |
 | Emoji Shortcodes plugin | Type `:` and a shortcode (`:jo`): emoji suggested, recently used first; Enter puts in the emoji (or keeps the shortcode); `:heart:` in the text shows as ❤️ (`example_vault/Examples/Emoji.md`) |
