@@ -312,7 +312,7 @@ dependencies = [
 
 [[package]]
 name = "blackglass"
-version = "0.84.0"
+version = "0.89.0"
 dependencies = [
  "boa_engine",
  "chrono",
@@ -1767,7 +1767,7 @@ dependencies = [
 
 [[package]]
 name = "mdedit"
-version = "3.14.0"
+version = "3.16.0"
 dependencies = [
  "emojis",
  "image",

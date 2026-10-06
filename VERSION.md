@@ -1,6 +1,6 @@
 # Version history
 
-Current version: **0.84.0**
+Current version: **0.89.0**
 
 ## Versioning rules
 
@@ -26,6 +26,61 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 0.89.0 (2026-10-06)
+
+### Added
+- **Dates on a calendar in the task window** (W-80, TK-20): while a date
+  field (due, scheduled, start, created, done, cancelled) is edited, its
+  month shows beside the window with the date marked (today underlined).
+  Shift+←→ move a day, Shift+↑↓ a week, PgUp / PgDn a month (an empty
+  date starts at today), a click chooses a day; typing still works
+  (`2026-10-20`, `next friday`), and the calendar follows. Forms have
+  date fields for this (`FormField::date`).
+
+## 0.88.0 (2026-10-06)
+
+### Added
+- **A table's formula line hides** (AT-38): with Advanced Tables on, a
+  `<!-- TBLFM: … -->` line takes no room in the live preview and view
+  mode; ↑↓ still move onto it, and it shows as written there for
+  editing. Plugins can hide lines by how they start
+  (`Plugin::hidden_lines`, through mdedit 3.16.0's
+  `markdown::set_hidden_lines`).
+
+## 0.87.0 (2026-10-06)
+
+### Added
+- **Properties suggested in the filter pane** (W-131): while a filter's
+  property is typed, the vault's properties (and the base's formulas,
+  `file.*`) that match are listed under it, those starting with it
+  first; ↑↓ choose, Tab takes one and goes on to the value. Enter keeps
+  what's typed (a property no note has yet).
+
+## 0.86.0 (2026-10-06)
+
+### Added
+- **Postpone a task from a query's results** (TK-22): in view mode, with
+  the cursor on a ```` ```tasks ```` result, "Tasks: Postpone task" moves
+  that task's date in its own note, and the task window (Alt+T) edits
+  it there. Plugins see the result row the cursor is on
+  (`ActiveNote::action`, from mdedit 3.15.0's `EditorView::read_action`).
+
+## 0.85.0 (2026-10-06)
+
+### Added
+- **A task window** (W-80, TK-20): "Tasks: Create or edit task", now on
+  **Alt+T**, opens a window with every field of the task at the cursor
+  (or of a new one) at once, each with its value or a default:
+  description, status, priority (none), due, scheduled, start, recurs,
+  created, done, cancelled, ID, depends on, on completion. ↑↓ / Tab move
+  between fields, typing edits, ←→ choose, Enter saves, Esc cancels;
+  dates can be words (`tomorrow`, `next friday`). Plugins can ask with a
+  form like it (`Question::Form`, answered as `Answer::Fields`).
+
+### Fixed
+- Editing a task kept only the tags in its description: tags written
+  after its fields (`… 📅 2026-10-12 #garden`) were lost.
 
 ## 0.84.0 (2026-10-06)
 

@@ -51,9 +51,9 @@ Periodic Notes' date parsing, `plugins::moment`.
 
 | ID | Feature | Now | Effort | Notes |
 |----|---------|-----|--------|-------|
-| TK-20 | Create or edit a task in a popup: description, priority, recurrence, the six dates (typed as `today`, `tomorrow`, `fri`, `in 2 weeks`, or a date), status, dependencies (before / after this task, chosen from the vault's tasks) | 🟡 | L | 0.52.0: questions one after the other (description, priority, due, scheduled, starts, recurrence, status); dependencies and created date not asked; Like the settings window's pages |
+| TK-20 | Create or edit a task in a popup: description, priority, recurrence, the six dates (typed as `today`, `tomorrow`, `fri`, `in 2 weeks`, or a date), status, dependencies (before / after this task, chosen from the vault's tasks) | 🟡 | L | 0.85.0: a window of every field at once (Alt+T): description (its tags too), status, priority, due, scheduled, start, recurs, created, done, cancelled, ID, depends on (IDs typed), on completion, each with its value or default (priority none …); dates in words, or on a calendar beside the window (0.89.0: Shift+arrows, PgUp / PgDn, a click; `workspace::task_dates_are_chosen_on_a_calendar`). Dependencies aren't chosen from a list of the vault's tasks yet |
 | TK-21 | Suggestions while typing a task: the date emoji and a date, priorities, 🔁 rules, ids | ✅ | M | 0.66.0: on a task line, a typed word offers the fields (`du` → 📅 due date), a date's emoji offers dates, 🔁 offers rules; ↑/↓, Enter or Tab, Esc; was: Like `[[` link suggestions (W-23) |
-| TK-22 | Postpone from a result: due (or scheduled) + 1 day, a week … | 🟡 | S | 0.52.0: "Postpone task" on the cursor's task (1 day … 1 month, from today if the date passed); not from a result |
+| TK-22 | Postpone from a result: due (or scheduled) + 1 day, a week … | ✅ | S | 0.52.0: "Postpone task" on the cursor's task; 0.86.0: on the query result the cursor is on too (view mode), as is the task window (Alt+T); `workspace::a_tasks_result_is_postponed_and_edited_where_it_is` |
 
 ## 4. ```` ```tasks ```` queries
 

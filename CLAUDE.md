@@ -187,6 +187,9 @@ cargo test --test project            # versions, feature ↔ test mapping, --hel
   while it has the focus, `Focus::Pane`; `Effect::FocusPane`). Bases'
   filter pane keeps its own copy of the rows (`pane::Work`) and writes
   every change to the `.base` file, so its page redraws the results.
+- A plugin can ask with a form (`Question::Form`: every field shown
+  with its default, text or choice; answered as one `Answer::Fields`),
+  the Tasks window's way (Alt+T).
 - New notes the user makes go through `App::create_new_note`, which gives
   them a note ID when the vault's Notes settings ask for one
   (`note_ids`, `.blackglass/notes.toml`); only notes with names of their
@@ -230,6 +233,7 @@ cargo test --test project            # versions, feature ↔ test mapping, --hel
   is named through `App::shown_name`; asked while drawing, so cache);
   badge links and render spans in the live preview (`link_badge`,
   `rendered_spans` / `render_span`, through mdedit's `set_link_badge` /
-  `set_rendered`, set in `App::template_tags`); delete a note and point
+  `set_rendered`, set in `App::template_tags`), hide lines but at the
+  cursor (`hidden_lines`, mdedit's `set_hidden_lines`); delete a note and point
   links elsewhere (`Effect::DeleteNote`, `Effect::Retarget`). A note a
   plugin makes (`Effect::CreateFile`) runs its Templater commands.

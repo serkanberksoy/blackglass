@@ -8,7 +8,8 @@
 //!   done dates and the next occurrence.
 //! - [`query`]: ```` ```tasks ```` blocks' filters, sorting and grouping.
 //! - [`results`]: drawing the results; a click or Enter toggles a task.
-//! - Commands: toggle done, create or edit a task (questions), postpone.
+//! - Commands: toggle done, create or edit a task (a window of every
+//!   field, Alt+T), postpone.
 
 pub mod query;
 pub mod results;
@@ -22,7 +23,7 @@ use chrono::{Days, Months, NaiveDate};
 use ratatui::text::Line;
 
 use super::settings::{Kind, Setting, Values};
-use super::{Answer, Context, Effect, Manifest, Plugin, PluginCommand, Question};
+use super::{Answer, Context, Effect, FormField, Manifest, Plugin, PluginCommand, Question};
 use crate::vault::Vault;
 use task::{DateField, Priority, Statuses, Task, Toggle, Type};
 
@@ -48,12 +49,23 @@ pub struct Tasks {
     /// New fields in the Dataview format (`[due:: …]`).
     dataview: bool,
     cache: RefCell<Cache>,
-    /// The task being created or edited: its line, and the line as it was
+    /// The task being created or edited: where, and the line as it was
     /// (`None` for a new one).
-    editing: Option<(usize, Option<String>)>,
+    editing: Option<(Spot, Option<String>)>,
+    /// The task being postponed: where, and its line.
+    postponing: Option<(Spot, Task)>,
     /// The priorities and statuses in the order the questions list them.
     priority_items: Vec<Priority>,
     status_items: Vec<char>,
+}
+
+/// Where a task being changed is.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Spot {
+    /// A line of the active note.
+    Here(usize),
+    /// A line of another note (a query result the cursor is on).
+    There(PathBuf, usize),
 }
 
 /// Today (the local date).
@@ -123,6 +135,47 @@ impl Tasks {
     }
 
     /// The task on the active note's cursor line.
+    /// The task a command works on: the query result the cursor is on (in
+    /// view mode), or the task on the cursor's line.
+    fn target(&self, ctx: &Context) -> Option<(Spot, Task)> {
+        if let Some(payload) = ctx
+            .note
+            .and_then(|n| n.action)
+            .and_then(|a| a.strip_prefix("plugin:tasks:toggle:"))
+        {
+            let (line, rel) = payload.split_once(':')?;
+            let line: usize = line.parse().ok()?;
+            let t = self
+                .tasks
+                .iter()
+                .find(|t| t.line == line && t.path == Path::new(rel))?;
+            return Some((Spot::There(self.root.join(rel), line), t.clone()));
+        }
+        Tasks::task_at_cursor(ctx).map(|(row, t)| (Spot::Here(row), t))
+    }
+
+    /// Puts `line` where a task is (`before`: the line it replaces).
+    fn put(spot: Spot, before: Option<String>, line: String, ctx: &Context) -> Effect {
+        match spot {
+            Spot::Here(row) => {
+                let col = ctx.note.map_or(0, |n| n.col).min(line.chars().count());
+                Effect::ReplaceLines {
+                    from: row,
+                    to: row + 1,
+                    lines: vec![line],
+                    cursor: (row, col),
+                }
+            }
+            Spot::There(path, at) => Effect::EditNote {
+                path,
+                from: at,
+                to: at + 1,
+                lines: vec![line],
+                expect: before.into_iter().collect(),
+            },
+        }
+    }
+
     fn task_at_cursor(ctx: &Context) -> Option<(usize, Task)> {
         let note = ctx.note?;
         let line = note.text.lines().nth(note.row)?;
@@ -200,113 +253,204 @@ impl Tasks {
         }
     }
 
-    /// The create-or-edit questions (TK-20).
+    /// The create-or-edit window (TK-20): every field of the task at the
+    /// cursor (or of a new one), each with its value or default.
     fn ask_edit(&mut self, ctx: &Context) -> Effect {
         let Some(note) = ctx.note else {
             return Effect::Message("Open a note first".into());
         };
-        let line = note.text.lines().nth(note.row).unwrap_or_default();
-        let task = Task::parse(line);
-        self.editing = Some((note.row, task.as_ref().map(|t| t.raw.clone())));
+        // A query result the cursor is on, or the cursor's line.
+        let (spot, task, line) = match self.target(ctx) {
+            Some((Spot::There(path, at), t)) => {
+                let raw = t.raw.clone();
+                (Spot::There(path, at), Some(t), raw)
+            }
+            _ => {
+                let line = note.text.lines().nth(note.row).unwrap_or_default();
+                (Spot::Here(note.row), Task::parse(line), line.to_string())
+            }
+        };
+        let line = line.as_str();
+        self.editing = Some((spot, task.as_ref().map(|t| t.raw.clone())));
         let description = match &task {
-            Some(t) => t.description.clone(),
+            // Tags written after the fields too, so they stay.
+            Some(t) => {
+                let mut d = t.description.clone();
+                for tag in &t.tags {
+                    if !d.contains(tag.as_str()) {
+                        d.push(' ');
+                        d.push_str(tag);
+                    }
+                }
+                d
+            }
             None => line
                 .trim_start()
                 .trim_start_matches(['-', '*', '+'])
                 .trim()
                 .to_string(),
         };
-        let current = task.as_ref().map_or(Priority::None, |t| t.priority);
-        self.priority_items = std::iter::once(current)
-            .chain(
-                Priority::ALL
-                    .iter()
-                    .map(|(p, _, _)| *p)
-                    .filter(|p| *p != current),
-            )
-            .collect();
+        // Priorities as the original lists them (highest first, none in
+        // the middle).
+        self.priority_items = Priority::ALL.iter().map(|(p, _, _)| *p).collect();
+        let priority = task.as_ref().map_or(Priority::None, |t| t.priority);
+        // The core statuses first, then the others.
+        let mut symbols = vec![' ', '/', 'x', '-'];
+        for st in self.statuses.all() {
+            if !symbols.contains(&st.symbol) {
+                symbols.push(st.symbol);
+            }
+        }
         let status = task.as_ref().map_or(' ', |t| t.status);
-        self.status_items = std::iter::once(status)
-            .chain([' ', '/', 'x', '-'].into_iter().filter(|c| *c != status))
-            .collect();
+        if !symbols.contains(&status) {
+            symbols.push(status);
+        }
+        self.status_items = symbols;
         let date = |f: DateField| {
             task.as_ref()
                 .and_then(|t| t.date(f))
                 .map(|d| d.to_string())
                 .unwrap_or_default()
         };
-        let text = |prompt: &str, default: String| Question::Text {
-            prompt: prompt.into(),
-            default,
-        };
-        Effect::Ask(vec![
-            text("Task: description", description),
-            Question::Choose {
-                prompt: "Task: priority".into(),
-                items: self
-                    .priority_items
-                    .iter()
-                    .map(|p| p.name().to_string())
-                    .collect(),
-            },
-            text(
-                "Task: due (today, fri, in 2 weeks, 2026-10-01)",
-                date(DateField::Due),
-            ),
-            text("Task: scheduled", date(DateField::Scheduled)),
-            text("Task: starts", date(DateField::Start)),
-            text(
-                "Task: recurrence (every week, every month on the 1st …)",
-                task.as_ref()
-                    .and_then(|t| t.recurrence.clone())
-                    .unwrap_or_default(),
-            ),
-            Question::Choose {
-                prompt: "Task: status".into(),
-                items: self
-                    .status_items
-                    .iter()
-                    .map(|c| format!("[{c}] {}", self.statuses.get(*c).name))
-                    .collect(),
-            },
-        ])
+        let named = |items: &[String], at: usize| (items.to_vec(), at);
+        let statuses: Vec<String> = self
+            .status_items
+            .iter()
+            .map(|c| format!("{} [{c}]", self.statuses.get(*c).name))
+            .collect();
+        let priorities: Vec<String> = self
+            .priority_items
+            .iter()
+            .map(|p| {
+                let mut name = p.name().to_string();
+                name[..1].make_ascii_uppercase();
+                match p.emoji() {
+                    "" => name,
+                    e => format!("{name} {e}"),
+                }
+            })
+            .collect();
+        let completion = ["(nothing)", "keep", "delete"].map(String::from).to_vec();
+        let on_completion = task
+            .as_ref()
+            .and_then(|t| t.on_completion.as_deref())
+            .and_then(|c| completion.iter().position(|x| x == c))
+            .unwrap_or(0);
+        let (s_items, s_at) = named(
+            &statuses,
+            self.status_items
+                .iter()
+                .position(|c| *c == status)
+                .unwrap_or(0),
+        );
+        let (p_items, p_at) = named(
+            &priorities,
+            self.priority_items
+                .iter()
+                .position(|p| *p == priority)
+                .unwrap_or(3),
+        );
+        let when = "A date: 2026-10-20, today, tomorrow, fri, next week, in 3 days (empty: none)";
+        Effect::Ask(vec![Question::Form {
+            title: if task.is_some() {
+                "Edit task"
+            } else {
+                "New task"
+            }
+            .into(),
+            fields: vec![
+                FormField::text(
+                    "Description",
+                    "What's to be done (tags too: #work)",
+                    &description,
+                ),
+                FormField::choice("Status", "←→ the task's status", s_items, s_at),
+                FormField::choice(
+                    "Priority",
+                    "←→ highest, high, medium, none, low, lowest",
+                    p_items,
+                    p_at,
+                ),
+                FormField::date("Due", when, &date(DateField::Due)),
+                FormField::date("Scheduled", when, &date(DateField::Scheduled)),
+                FormField::date("Start", when, &date(DateField::Start)),
+                FormField::text(
+                    "Recurs",
+                    "every day, every week on Monday, every month on the 1st … (empty: once)",
+                    task.as_ref()
+                        .and_then(|t| t.recurrence.as_deref())
+                        .unwrap_or_default(),
+                ),
+                FormField::date("Created", when, &date(DateField::Created)),
+                FormField::date("Done", when, &date(DateField::Done)),
+                FormField::date("Cancelled", when, &date(DateField::Cancelled)),
+                FormField::text(
+                    "ID",
+                    "A name other tasks can wait on (letters, digits, - and _)",
+                    task.as_ref()
+                        .and_then(|t| t.id.as_deref())
+                        .unwrap_or_default(),
+                ),
+                FormField::text(
+                    "Depends on",
+                    "The IDs of the tasks this one waits for, separated by commas",
+                    &task
+                        .as_ref()
+                        .map(|t| t.depends.join(","))
+                        .unwrap_or_default(),
+                ),
+                FormField::choice(
+                    "On completion",
+                    "←→ what happens to the task once it's done: keep it, or delete it",
+                    completion,
+                    on_completion,
+                ),
+            ],
+        }])
     }
 
-    /// Writes the edited task from the answers.
+    /// Writes the task from the window's fields.
     fn answer_edit(&mut self, answers: &[Answer], ctx: &Context) -> Effect {
-        let Some((row, before)) = self.editing.take() else {
+        let Some((spot, before)) = self.editing.take() else {
             return Effect::None;
         };
-        let [
-            Answer::Text(description),
-            Answer::Choice(priority),
-            Answer::Text(due),
-            Answer::Text(scheduled),
-            Answer::Text(start),
-            Answer::Text(rule),
-            Answer::Choice(status),
-        ] = answers
-        else {
+        let [Answer::Fields(fields)] = answers else {
             return Effect::None;
+        };
+        let text = |i: usize| match fields.get(i) {
+            Some(Answer::Text(t)) => t.trim().to_string(),
+            _ => String::new(),
+        };
+        let choice = |i: usize| match fields.get(i) {
+            Some(Answer::Choice(c)) => *c,
+            _ => 0,
         };
         let today = today();
+        let now = chrono::Local::now().naive_local();
         let mut dates = Vec::new();
-        for (field, text) in [
-            (DateField::Due, due),
-            (DateField::Scheduled, scheduled),
-            (DateField::Start, start),
+        for (i, field) in [
+            (3, DateField::Due),
+            (4, DateField::Scheduled),
+            (5, DateField::Start),
+            (7, DateField::Created),
+            (8, DateField::Done),
+            (9, DateField::Cancelled),
         ] {
-            if text.trim().is_empty() {
+            let typed = text(i);
+            if typed.is_empty() {
                 dates.push((field, None));
                 continue;
             }
-            match query::date(text, today) {
+            match query::date(&typed, today)
+                .or_else(|| crate::nldates::parse_date(&typed, now, chrono::Weekday::Mon))
+            {
                 Some(d) => dates.push((field, Some(d))),
-                None => return Effect::Message(format!("Tasks: can't read the date {text:?}")),
+                None => return Effect::Message(format!("Tasks: can't read the date {typed:?}")),
             }
         }
-        if !rule.trim().is_empty()
-            && let Err(e) = task::Recurrence::parse(rule)
+        let rule = text(6);
+        if !rule.is_empty()
+            && let Err(e) = task::Recurrence::parse(&rule)
         {
             return Effect::Message(format!("Tasks: {e}"));
         }
@@ -314,46 +458,51 @@ impl Tasks {
         let mut t = old
             .clone()
             .unwrap_or_else(|| Task::parse("- [ ] x").expect("a task line is a task"));
-        t.description = description.trim().to_string();
+        t.description = text(0);
         t.priority = self
             .priority_items
-            .get(*priority)
+            .get(choice(2))
             .copied()
             .unwrap_or_default();
         for (field, date) in dates {
             t.dates[field as usize] = date;
         }
-        t.recurrence = Some(rule.trim().to_string()).filter(|r| !r.is_empty());
-        let symbol = self.status_items.get(*status).copied().unwrap_or(' ');
+        t.recurrence = Some(rule).filter(|r| !r.is_empty());
+        t.id = Some(text(10)).filter(|i| !i.is_empty());
+        t.depends = text(11)
+            .split([',', ' '])
+            .map(str::trim)
+            .filter(|d| !d.is_empty())
+            .map(String::from)
+            .collect();
+        t.on_completion = match choice(12) {
+            1 => Some("keep".into()),
+            2 => Some("delete".into()),
+            _ => None,
+        };
+        let symbol = self.status_items.get(choice(1)).copied().unwrap_or(' ');
         let was = self.statuses.get(t.status).kind;
-        let now = self.statuses.get(symbol).kind;
+        let now_kind = self.statuses.get(symbol).kind;
+        // Done (or cancelled) now: its date, unless one was typed.
         if self.toggle.dates {
             for (field, kind) in [
                 (DateField::Done, Type::Done),
                 (DateField::Cancelled, Type::Cancelled),
             ] {
-                if now == kind && was != kind {
+                if now_kind == kind && was != kind && t.dates[field as usize].is_none() {
                     t.dates[field as usize] = Some(today);
-                } else if now != kind {
-                    t.dates[field as usize] = None;
                 }
             }
         }
         t.status = symbol;
         let dataview = self.dataview || before.as_deref().is_some_and(|b| b.contains("::"));
         let line = write(&t, dataview);
-        let col = ctx.note.map_or(0, |n| n.col).min(line.chars().count());
-        Effect::ReplaceLines {
-            from: row,
-            to: row + 1,
-            lines: vec![line],
-            cursor: (row, col),
-        }
+        Tasks::put(spot, before, line, ctx)
     }
 
     /// Postpones the cursor's task by the chosen time (TK-22).
-    fn postpone(&self, choice: usize, ctx: &Context) -> Effect {
-        let Some((row, t)) = Tasks::task_at_cursor(ctx) else {
+    fn postpone(&mut self, choice: usize, ctx: &Context) -> Effect {
+        let Some((spot, t)) = self.postponing.take() else {
             return Effect::Message("Tasks: the cursor is not on a task".into());
         };
         let Some(&(_, days, months)) = POSTPONE.get(choice) else {
@@ -371,12 +520,7 @@ impl Tasks {
             return Effect::None;
         };
         let line = Task::with_date(&t.raw, field, Some(date));
-        Effect::ReplaceLines {
-            from: row,
-            to: row + 1,
-            cursor: (row, ctx.note.map_or(0, |n| n.col)),
-            lines: vec![line],
-        }
+        Tasks::put(spot, Some(t.raw.clone()), line, ctx)
     }
 }
 
@@ -607,7 +751,7 @@ impl Plugin for Tasks {
     fn commands(&self) -> Vec<PluginCommand> {
         vec![
             PluginCommand::new("toggle-done", "Toggle task done"),
-            PluginCommand::new("create-or-edit", "Create or edit task"),
+            PluginCommand::new("create-or-edit", "Create or edit task").keys("Alt+T"),
             PluginCommand::new("postpone", "Postpone task"),
         ]
     }
@@ -617,7 +761,8 @@ impl Plugin for Tasks {
             "toggle-done" => self.toggle_line(ctx),
             "create-or-edit" => self.ask_edit(ctx),
             "postpone" => {
-                if Tasks::task_at_cursor(ctx).is_none() {
+                self.postponing = self.target(ctx);
+                if self.postponing.is_none() {
                     return Effect::Message("Tasks: the cursor is not on a task".into());
                 }
                 Effect::Ask(vec![Question::Choose {

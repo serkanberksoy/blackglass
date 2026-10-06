@@ -133,6 +133,11 @@ impl Plugin for Tables {
         self.on_vault_changed(vault);
     }
 
+    /// A table's formula line shows only while it's edited (AT-38).
+    fn hidden_lines(&self) -> Vec<&'static str> {
+        vec!["<!-- TBLFM:"]
+    }
+
     fn on_vault_changed(&mut self, vault: &Vault) {
         let text = std::fs::read_to_string(super::settings_file(vault, ID)).unwrap_or_default();
         let values = Values::parse(&text);

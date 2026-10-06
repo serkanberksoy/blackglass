@@ -4054,46 +4054,103 @@ fn tasks_are_created_edited_and_postponed() {
     let e = note(&app, "E.md");
     app.open(&e);
     put_cursor(&mut app, 1, 0);
-    run_palette(&mut app, "tasks create or edit task");
-    typing(&mut app, "Buy milk");
-    key(&mut app, KeyCode::Enter); // description
-    typing(&mut app, "medium");
-    key(&mut app, KeyCode::Enter); // priority
-    typing(&mut app, "tomorrow");
-    key(&mut app, KeyCode::Enter); // due
-    for _ in 0..4 {
-        key(&mut app, KeyCode::Enter); // scheduled, start, recurrence, status
+    // Alt+T: every field at once, each with its default.
+    alt(&mut app, KeyCode::Char('t'));
+    let rows = screen(&mut app, 110, 40).join("\n");
+    for field in [
+        "Description",
+        "Status",
+        "Priority",
+        "Due",
+        "Recurs",
+        "Created",
+        "On completion",
+    ] {
+        assert!(rows.contains(field), "{field}: {rows}");
     }
+    assert!(rows.contains("‹ None ›"), "no priority by default: {rows}");
+    typing(&mut app, "Buy milk"); // the description
+    key(&mut app, KeyCode::Down); // status
+    key(&mut app, KeyCode::Down); // priority
+    key(&mut app, KeyCode::Left); // None → Medium
+    key(&mut app, KeyCode::Down); // due
+    typing(&mut app, "tomorrow");
+    key(&mut app, KeyCode::Enter);
     assert_eq!(
         lines(&app)[1],
         format!("- [ ] Buy milk 🔼 📅 {}", day(1)),
         "{}",
         app.message
     );
+    // The cursor's task: its fields filled in.
     put_cursor(&mut app, 2, 4);
-    run_palette(&mut app, "tasks create or edit task");
-    key(&mut app, KeyCode::Enter); // "Draft" kept
-    key(&mut app, KeyCode::Enter); // its priority kept
+    alt(&mut app, KeyCode::Char('t'));
+    let rows = screen(&mut app, 110, 40).join("\n");
+    assert!(
+        rows.contains("Draft") && rows.contains("2026-10-01"),
+        "{rows}"
+    );
+    for _ in 0..3 {
+        key(&mut app, KeyCode::Down); // due
+    }
     ctrl(&mut app, 'u');
     typing(&mut app, "2026-10-05");
-    key(&mut app, KeyCode::Enter); // due
-    key(&mut app, KeyCode::Enter); // scheduled
-    key(&mut app, KeyCode::Enter); // start
+    for _ in 0..3 {
+        key(&mut app, KeyCode::Down); // scheduled, start, recurs
+    }
     typing(&mut app, "every month");
-    key(&mut app, KeyCode::Enter); // recurrence
-    key(&mut app, KeyCode::Enter); // status
+    key(&mut app, KeyCode::Enter);
     assert_eq!(lines(&app)[2], "- [ ] Draft 🔁 every month 📅 2026-10-05");
+    // The rest: status, created, an ID, what happens on completion.
+    alt(&mut app, KeyCode::Char('t'));
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Right); // status: in progress
+    for _ in 0..6 {
+        key(&mut app, KeyCode::Down); // created
+    }
+    typing(&mut app, "2026-09-30");
+    for _ in 0..3 {
+        key(&mut app, KeyCode::Down); // ID
+    }
+    typing(&mut app, "draft1");
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Down); // on completion
+    key(&mut app, KeyCode::Right); // keep
+    key(&mut app, KeyCode::Enter);
+    let line = lines(&app)[2].clone();
+    assert!(line.starts_with("- [/] Draft"), "{line}");
+    for part in [
+        "🔁 every month",
+        "📅 2026-10-05",
+        "➕ 2026-09-30",
+        "🆔 draft1",
+        "🏁 keep",
+    ] {
+        assert!(line.contains(part), "{part}: {line}");
+    }
+    // Esc changes nothing.
+    alt(&mut app, KeyCode::Char('t'));
+    typing(&mut app, " more");
+    key(&mut app, KeyCode::Esc);
+    assert_eq!(lines(&app)[2], line);
     // A bad date says so and changes nothing.
-    run_palette(&mut app, "tasks create or edit task");
-    key(&mut app, KeyCode::Enter);
-    key(&mut app, KeyCode::Enter);
+    alt(&mut app, KeyCode::Char('t'));
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Left); // status back: to do
+    for _ in 0..2 {
+        key(&mut app, KeyCode::Down); // due
+    }
     ctrl(&mut app, 'u');
     typing(&mut app, "someday");
-    for _ in 0..5 {
-        key(&mut app, KeyCode::Enter);
-    }
+    key(&mut app, KeyCode::Enter);
     assert!(app.message.contains("someday"), "{}", app.message);
-    assert_eq!(lines(&app)[2], "- [ ] Draft 🔁 every month 📅 2026-10-05");
+    assert_eq!(lines(&app)[2], line);
+    // Back to a plain task for the postponing below.
+    let plain = "- [ ] Draft 🔁 every month 📅 2026-10-05";
+    put_cursor(&mut app, 2, 0);
+    press(&mut app, KeyCode::End, KeyModifiers::SHIFT);
+    typing(&mut app, plain);
+    assert_eq!(lines(&app)[2], plain);
     run_palette(&mut app, "tasks postpone task");
     typing(&mut app, "1 week");
     key(&mut app, KeyCode::Enter);
@@ -7773,5 +7830,163 @@ fn a_new_base_opens_with_its_filters() {
     assert!(
         rows.contains("Filters") && rows.contains("add filter"),
         "{rows}"
+    );
+}
+
+#[test]
+fn editing_a_task_keeps_its_tags_after_the_fields() {
+    let mut app = tasks_app(
+        "tasks-edit-tags",
+        &[("T.md", "- [ ] Paint the fence ⏫ 📅 2026-10-12 #garden\n")],
+    );
+    app.open(&note(&app, "T.md"));
+    alt(&mut app, KeyCode::Char('t'));
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Right); // high → medium
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(
+        lines(&app)[0],
+        "- [ ] Paint the fence #garden 🔼 📅 2026-10-12",
+        "{}",
+        app.message
+    );
+}
+
+#[test]
+fn a_tasks_result_is_postponed_and_edited_where_it_is() {
+    let work = format!("# Work\n- [ ] Ship report 📅 {}\n", day(0));
+    let mut app = tasks_app(
+        "tasks-result-postpone",
+        &[
+            ("Work.md", &work),
+            ("Query.md", "top\n```tasks\nnot done\n```\nend\n"),
+        ],
+    );
+    app.open(&note(&app, "Query.md"));
+    run_palette(&mut app, "view mode");
+    // Down: the block's frame, then its first result.
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Down);
+    run_palette(&mut app, "tasks postpone task");
+    typing(&mut app, "1 day");
+    key(&mut app, KeyCode::Enter);
+    let text = fs::read_to_string(note(&app, "Work.md")).unwrap();
+    assert!(
+        text.contains(&format!("- [ ] Ship report 📅 {}", day(1))),
+        "{text}\n{}",
+        app.message
+    );
+    // The task window works on the result's task too.
+    screen(&mut app, 110, 30);
+    alt(&mut app, KeyCode::Char('t'));
+    let rows = screen(&mut app, 110, 30).join("\n");
+    assert!(rows.contains("Ship report"), "{rows}");
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Left); // none → medium
+    key(&mut app, KeyCode::Enter);
+    let text = fs::read_to_string(note(&app, "Work.md")).unwrap();
+    assert!(
+        text.contains(&format!("- [ ] Ship report 🔼 📅 {}", day(1))),
+        "{text}\n{}",
+        app.message
+    );
+    assert_eq!(lines(&app)[0], "top", "the query note is as it was");
+}
+
+#[test]
+fn the_filter_pane_suggests_properties() {
+    let dir = vault("bases-filter-suggest", BOARD);
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "Projects.base"));
+    alt(&mut app, KeyCode::Char('f'));
+    key(&mut app, KeyCode::Char('a'));
+    typing(&mut app, "prio");
+    let rows = screen(&mut app, 120, 40);
+    let pane = rows_between(&rows, "Filters", "add filter");
+    assert!(pane.contains("priority"), "suggested: {pane}");
+    // Tab takes it; then the value.
+    key(&mut app, KeyCode::Tab);
+    typing(&mut app, "high");
+    key(&mut app, KeyCode::Enter);
+    let base = fs::read_to_string(dir.join("Projects.base")).unwrap();
+    assert!(base.contains("- priority == \"high\""), "{base}");
+    let rows = screen(&mut app, 120, 40).join("\n");
+    assert!(rows.contains("1 result"), "Garden: {rows}");
+}
+
+#[test]
+fn a_tables_formula_line_hides_until_the_cursor_is_on_it() {
+    let dir = vault(
+        "tables-formula-hidden",
+        &[
+            (
+                "T.md",
+                "top\n| a | b |\n|---|---|\n| 1 | 2 |\n<!-- TBLFM: $2=$1*2 -->\nend",
+            ),
+            (
+                ".blackglass/plugins.toml",
+                "installed = [\"tables\"]\nenabled = [\"tables\"]\n",
+            ),
+        ],
+    );
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "T.md"));
+    let rows = screen(&mut app, 100, 20).join("\n");
+    assert!(
+        !rows.contains("TBLFM") && rows.contains("end"),
+        "hidden: {rows}"
+    );
+    put_cursor(&mut app, 4, 0);
+    let rows = screen(&mut app, 100, 20).join("\n");
+    assert!(
+        rows.contains("<!-- TBLFM: $2=$1*2 -->"),
+        "at the cursor: {rows}"
+    );
+}
+
+#[test]
+fn task_dates_are_chosen_on_a_calendar() {
+    let mut app = tasks_app(
+        "tasks-date-picker",
+        &[("T.md", "- [ ] Paint the fence 📅 2026-10-01\n")],
+    );
+    app.open(&note(&app, "T.md"));
+    alt(&mut app, KeyCode::Char('t'));
+    for _ in 0..3 {
+        key(&mut app, KeyCode::Down); // due
+    }
+    let rows = screen(&mut app, 120, 40).join("\n");
+    assert!(
+        rows.contains("October 2026") && rows.contains("Mo Tu We"),
+        "{rows}"
+    );
+    // Shift+→ a day, Shift+↓ a week, PgDn a month.
+    press(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+    press(&mut app, KeyCode::Down, KeyModifiers::SHIFT);
+    key(&mut app, KeyCode::PageDown);
+    let rows = screen(&mut app, 120, 40);
+    let all = rows.join("\n");
+    assert!(
+        all.contains("2026-11-09") && all.contains("November 2026"),
+        "{all}"
+    );
+    // A click on a day chooses it.
+    let (y, x) = rows
+        .iter()
+        .enumerate()
+        .find_map(|(y, r)| r.find(" 20 ").map(|x| (y, r[..x].chars().count() + 1)))
+        .expect("the 20th on the calendar");
+    click(&mut app, x as u16, y as u16);
+    // An empty date: the first key gives today.
+    key(&mut app, KeyCode::Down); // scheduled
+    press(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(
+        lines(&app)[0],
+        format!("- [ ] Paint the fence ⏳ {} 📅 2026-11-20", day(0)),
+        "{}",
+        app.message
     );
 }

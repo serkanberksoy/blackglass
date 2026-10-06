@@ -273,6 +273,70 @@ pub enum Question {
     /// Choose any of `items` (Tab marks one; Enter takes the marked, or
     /// the highlighted one if none is).
     Many { prompt: String, items: Vec<String> },
+    /// A window of fields, every one shown with its default: ↑↓ / Tab move
+    /// between them, typing edits a text, ←→ change a choice, Enter takes
+    /// them all ([`Answer::Fields`]).
+    Form {
+        title: String,
+        fields: Vec<FormField>,
+    },
+}
+
+/// A field of a [`Question::Form`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FormField {
+    pub label: String,
+    /// One line saying what it takes (shown for the field being edited).
+    pub help: String,
+    pub value: FieldValue,
+}
+
+impl FormField {
+    pub fn text(label: &str, help: &str, value: &str) -> Self {
+        FormField {
+            label: label.into(),
+            help: help.into(),
+            value: FieldValue::Text(value.into()),
+        }
+    }
+
+    /// A date: typed (`2026-10-20`, `tomorrow`), or chosen on a calendar
+    /// beside the form (Shift+arrows, PgUp / PgDn, a click).
+    pub fn date(label: &str, help: &str, value: &str) -> Self {
+        FormField {
+            label: label.into(),
+            help: help.into(),
+            value: FieldValue::Date(value.into()),
+        }
+    }
+
+    pub fn choice(label: &str, help: &str, items: Vec<String>, chosen: usize) -> Self {
+        FormField {
+            label: label.into(),
+            help: help.into(),
+            value: FieldValue::Choice(items, chosen),
+        }
+    }
+}
+
+/// A form field's value: text, or a choice of items (the chosen one).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FieldValue {
+    Text(String),
+    Choice(Vec<String>, usize),
+    /// A date as typed (answered as [`Answer::Text`]).
+    Date(String),
+}
+
+impl FieldValue {
+    /// A date field's day: what's typed, read (`2026-10-20`, `tomorrow`).
+    pub fn day(&self) -> Option<chrono::NaiveDate> {
+        let FieldValue::Date(text) = self else {
+            return None;
+        };
+        let now = chrono::Local::now().naive_local();
+        crate::nldates::parse_date(text, now, chrono::Weekday::Mon)
+    }
 }
 
 /// An answer, in the order of the questions.
@@ -283,6 +347,8 @@ pub enum Answer {
     Choice(usize),
     /// The indexes of the chosen items ([`Question::Many`]), in order.
     Choices(Vec<usize>),
+    /// A form's fields, in order: [`Answer::Text`] or [`Answer::Choice`].
+    Fields(Vec<Answer>),
 }
 
 /// What a command can see when it runs.
@@ -310,6 +376,9 @@ pub struct ActiveNote<'a> {
     /// The cursor's line, and its column (in chars).
     pub row: usize,
     pub col: usize,
+    /// View mode: the action of the result row the cursor is on
+    /// (`plugin:tasks:toggle:…`), for a command that works on it.
+    pub action: Option<&'a str>,
 }
 
 /// A plugin. Everything but the manifest is optional.
@@ -364,6 +433,13 @@ pub trait Plugin {
     /// closing) markers (`("[@", "]")`); [`Plugin::render_span`] gives
     /// what's shown.
     fn rendered_spans(&self) -> Vec<(&'static str, &'static str)> {
+        Vec::new()
+    }
+
+    /// Lines the plugin hides in the live preview (and view mode) unless
+    /// the cursor is on them, by how they start (Advanced Tables'
+    /// `<!-- TBLFM:` formula lines).
+    fn hidden_lines(&self) -> Vec<&'static str> {
         Vec::new()
     }
 
@@ -971,6 +1047,15 @@ impl Plugins {
             .iter()
             .filter(|e| e.enabled)
             .find_map(|e| e.plugin.link_badge(target))
+    }
+
+    /// How the lines the enabled plugins hide start.
+    pub fn hidden_lines(&self) -> Vec<&'static str> {
+        let mut all = Vec::new();
+        for e in self.entries.iter().filter(|e| e.enabled) {
+            all.extend(e.plugin.hidden_lines());
+        }
+        all
     }
 
     /// The enabled plugins' rendered spans' markers.

@@ -119,6 +119,11 @@ impl Statuses {
     }
 
     /// The status for `symbol` (an unknown one is a to-do).
+    /// Every status, in order.
+    pub fn all(&self) -> &[Status] {
+        &self.0
+    }
+
     pub fn get(&self, symbol: char) -> Status {
         self.0
             .iter()

@@ -171,6 +171,7 @@ fn every_template_in_the_example_vault_renders() {
                 }
                 Question::Choose { .. } => Answer::Choice(0),
                 Question::Many { .. } => Answer::Choices(Vec::new()),
+                Question::Form { .. } => Answer::Fields(Vec::new()),
             }));
         };
         assert!(

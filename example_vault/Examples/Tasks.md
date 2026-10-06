@@ -14,7 +14,10 @@ With the **Tasks** plugin, tasks carry dates and priorities:
 
 Put the cursor on a task and run "Tasks: Toggle task done" (Ctrl+P): the
 done date is written, and a 🔁 task gets its next occurrence. "Tasks:
-Create or edit task" asks for its fields; "Tasks: Postpone task" moves it.
+Create or edit task" (**Alt+T**) opens a window with every field (each
+with its value, or a default like no priority); "Tasks: Postpone task"
+moves it. Both work on a task in a query's results too: Alt+V to view
+mode, the cursor on the result, then the command.
 
 ## Open, by due date
 

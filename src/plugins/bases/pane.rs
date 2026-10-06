@@ -43,6 +43,8 @@ pub struct FilterPane {
     cell: usize,
     /// The text typed into the cell, and what it was before.
     typing: Option<(String, String)>,
+    /// The property suggested (of those matching what's typed).
+    pick: usize,
     work: Option<Work>,
 }
 
@@ -55,6 +57,7 @@ impl Default for FilterPane {
             row: 0,
             cell: 2,
             typing: None,
+            pick: 0,
             work: None,
         }
     }
@@ -135,6 +138,27 @@ impl Bases {
             node: filters::read(now.as_ref()),
             written: now,
         })
+    }
+
+    /// The properties matching `typed` (those starting with it first), for
+    /// the property being typed.
+    fn suggested(&self, ctx: &Context, typed: &str) -> Vec<String> {
+        let Some(found) = base_at_cursor(ctx) else {
+            return Vec::new();
+        };
+        let Ok(base) = syntax::parse(&found.source) else {
+            return Vec::new();
+        };
+        let view = self.view_of(&base, &found.source);
+        let q = typed.trim().to_lowercase();
+        let mut found: Vec<String> = self
+            .properties(&base, view)
+            .into_iter()
+            .filter(|p| p.to_lowercase().contains(&q))
+            .collect();
+        found.sort_by_key(|p| !p.to_lowercase().starts_with(&q));
+        found.truncate(8);
+        found
     }
 
     /// The view's name, for the scope line.
@@ -240,6 +264,21 @@ impl Bases {
                 }
             }
             lines.push(Line::from(spans));
+            // The properties matching what's typed, under its row.
+            if let Some(typed) = typed.filter(|_| self.pane.cell == 0) {
+                let options = self.suggested(ctx, &typed);
+                if !options.is_empty() {
+                    let mut spans = vec![Span::raw(format!("{indent}  "))];
+                    let pick = self.pane.pick.min(options.len() - 1);
+                    for (k, o) in options.iter().enumerate() {
+                        let style = if k == pick { selected } else { dim };
+                        spans.push(Span::styled(o.clone(), style));
+                        spans.push(Span::raw("  "));
+                    }
+                    spans.push(Span::styled("↑↓ choose · Tab takes", dim));
+                    lines.push(Line::from(spans));
+                }
+            }
         }
         let add = Span::styled(
             "+ add filter (a) · add group (g) · d delete · o operator · c all/any/none",
@@ -316,6 +355,30 @@ impl Bases {
             let Some(path) = path else {
                 return Effect::Redraw;
             };
+            // A property: the vault's suggested (↑↓ choose, Tab takes).
+            let options = if self.pane.cell == 0 {
+                self.suggested(ctx, &text)
+            } else {
+                Vec::new()
+            };
+            match key.code {
+                KeyCode::Up | KeyCode::Down if !options.is_empty() => {
+                    let n = options.len();
+                    let pick = self.pane.pick.min(n - 1);
+                    self.pane.pick = if key.code == KeyCode::Up {
+                        (pick + n - 1) % n
+                    } else {
+                        (pick + 1) % n
+                    };
+                    self.pane.typing = Some((text, before));
+                    return Effect::Redraw;
+                }
+                KeyCode::Tab if !options.is_empty() => {
+                    text = options[self.pane.pick.min(options.len() - 1)].clone();
+                }
+                KeyCode::Char(_) | KeyCode::Backspace => self.pane.pick = 0,
+                _ => {}
+            }
             let done = match key.code {
                 KeyCode::Char(c) if !ctrl => {
                     text.push(c);
@@ -349,7 +412,7 @@ impl Bases {
             );
             if !done {
                 self.pane.typing = Some((text, before));
-            } else if property && key.code == KeyCode::Enter && next_value {
+            } else if property && matches!(key.code, KeyCode::Enter | KeyCode::Tab) && next_value {
                 // The property typed: on to the value.
                 self.pane.cell = 2;
                 self.pane.typing = Some((String::new(), String::new()));

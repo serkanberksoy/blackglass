@@ -125,6 +125,9 @@ pub struct Ask {
     pub selected: usize,
     /// For a choice of many: the items marked so far (Tab), in order.
     pub marked: Vec<usize>,
+    /// For a form: its fields' values as edited, and the field edited.
+    pub form: Vec<crate::plugins::FieldValue>,
+    pub field: usize,
 }
 
 impl Ask {
@@ -138,6 +141,8 @@ impl Ask {
             results: Vec::new(),
             selected: 0,
             marked: Vec::new(),
+            form: Vec::new(),
+            field: 0,
         };
         ask.update();
         ask
@@ -151,6 +156,12 @@ impl Ask {
     /// Filters a choice's items by the input (fuzzy, best first).
     fn update(&mut self) {
         self.selected = 0;
+        if let Question::Form { fields, .. } = self.current()
+            && self.form.is_empty()
+        {
+            self.form = fields.iter().map(|f| f.value.clone()).collect();
+            self.field = 0;
+        }
         let (Question::Choose { items, .. } | Question::Many { items, .. }) = self.current() else {
             return;
         };
@@ -189,7 +200,85 @@ impl Ask {
                 .results
                 .get(self.selected)
                 .map(|&i| Answer::Choices(vec![i])),
+            Question::Form { .. } => Some(Answer::Fields(
+                self.form
+                    .iter()
+                    .map(|v| match v {
+                        crate::plugins::FieldValue::Text(t)
+                        | crate::plugins::FieldValue::Date(t) => Answer::Text(t.clone()),
+                        crate::plugins::FieldValue::Choice(_, i) => Answer::Choice(*i),
+                    })
+                    .collect(),
+            )),
         }
+    }
+
+    /// A key for a form's fields; false if it isn't one (Enter, Esc).
+    fn form_key(&mut self, key: KeyEvent) -> bool {
+        use crate::plugins::FieldValue;
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let n = self.form.len();
+        let Some(value) = self.form.get_mut(self.field) else {
+            return false;
+        };
+        // A date: Shift+arrows a day or a week, PgUp / PgDn a month (from
+        // today when there's none).
+        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+        let step = match key.code {
+            KeyCode::Left if shift => Some((-1i64, 0i32)),
+            KeyCode::Right if shift => Some((1, 0)),
+            KeyCode::Up if shift => Some((-7, 0)),
+            KeyCode::Down if shift => Some((7, 0)),
+            KeyCode::PageUp => Some((0, -1)),
+            KeyCode::PageDown => Some((0, 1)),
+            _ => None,
+        };
+        if let (Some((days, months)), FieldValue::Date(_)) = (step, &*value) {
+            let today = chrono::Local::now().date_naive();
+            let day = match value.day() {
+                None => today,
+                Some(d) => {
+                    let d = d + chrono::Duration::days(days);
+                    let by = chrono::Months::new(months.unsigned_abs());
+                    if months < 0 {
+                        d.checked_sub_months(by).unwrap_or(d)
+                    } else {
+                        d.checked_add_months(by).unwrap_or(d)
+                    }
+                }
+            };
+            *value = FieldValue::Date(day.format("%Y-%m-%d").to_string());
+            return true;
+        }
+        match (key.code, value) {
+            (KeyCode::Up | KeyCode::BackTab, _) => self.field = self.field.saturating_sub(1),
+            (KeyCode::Down | KeyCode::Tab, _) => self.field = (self.field + 1).min(n - 1),
+            (KeyCode::Left, FieldValue::Choice(items, i)) => {
+                *i = (*i + items.len() - 1) % items.len()
+            }
+            (KeyCode::Right | KeyCode::Char(' '), FieldValue::Choice(items, i)) => {
+                *i = (*i + 1) % items.len();
+            }
+            // A letter chooses the next item starting with it.
+            (KeyCode::Char(c), FieldValue::Choice(items, i)) if !ctrl => {
+                let c = c.to_lowercase().to_string();
+                let len = items.len();
+                if let Some(k) = (1..=len)
+                    .map(|k| (*i + k) % len)
+                    .find(|&k| items[k].to_lowercase().starts_with(&c))
+                {
+                    *i = k;
+                }
+            }
+            (KeyCode::Char('u'), FieldValue::Text(t) | FieldValue::Date(t)) if ctrl => t.clear(),
+            (KeyCode::Char(c), FieldValue::Text(t) | FieldValue::Date(t)) if !ctrl => t.push(c),
+            (KeyCode::Backspace, FieldValue::Text(t) | FieldValue::Date(t)) => {
+                t.pop();
+            }
+            (KeyCode::Enter | KeyCode::Esc, _) => return false,
+            _ => {}
+        }
+        true
     }
 }
 
@@ -233,6 +322,8 @@ pub struct Areas {
     pub pane: Option<(&'static str, Rect)>,
     /// Where its text cursor is.
     pub pane_cursor: Option<(u16, u16)>,
+    /// A form's calendar: each day's cell.
+    pub form_days: Vec<(Rect, chrono::NaiveDate)>,
 }
 
 /// Opens a file outside blackglass (`Err`: why it couldn't).
@@ -1610,6 +1701,7 @@ impl App {
         let view = self.tabs.get(self.active);
         let text = view.map(|v| v.editor.to_text());
         let selection = view.and_then(|v| v.editor.selected_text());
+        let action = view.and_then(|v| v.read_action(&self.shared));
         let folder = self.sidebar.target_folder(&self.vault);
         let ctx = Context {
             vault: &self.vault,
@@ -1619,6 +1711,7 @@ impl App {
                 selection: selection.as_deref(),
                 row: v.editor.row,
                 col: v.editor.col,
+                action: action.as_deref(),
             }),
             folder: &folder,
             name,
@@ -2307,6 +2400,14 @@ impl App {
             })
             .collect();
         mdedit::markdown::set_rendered(rendered);
+        let starts = self.plugins.borrow().hidden_lines();
+        mdedit::markdown::set_hidden_lines((!starts.is_empty()).then(|| {
+            let hide: mdedit::markdown::HostLines = Rc::new(move |line: &str| {
+                let line = line.trim_start();
+                starts.iter().any(|s| line.starts_with(s))
+            });
+            hide
+        }));
     }
 
     fn templater_ready(&self) -> bool {
@@ -2726,6 +2827,11 @@ impl App {
                 _ => {}
             },
             Prompt::Ask(ask) => {
+                // A form's fields take their keys (Enter and Esc aside).
+                if matches!(ask.current(), Question::Form { .. }) && ask.form_key(key) {
+                    self.prompt = Some(prompt);
+                    return Action::Continue;
+                }
                 match key.code {
                     KeyCode::Up => ask.selected = ask.selected.saturating_sub(1),
                     KeyCode::Down => {
@@ -4380,6 +4486,14 @@ impl App {
                 p.input.push_str(&line);
                 p.update();
             }
+            Some(Prompt::Ask(ask)) if matches!(ask.current(), Question::Form { .. }) => {
+                if let Some(
+                    crate::plugins::FieldValue::Text(t) | crate::plugins::FieldValue::Date(t),
+                ) = ask.form.get_mut(ask.field)
+                {
+                    t.push_str(&line);
+                }
+            }
             Some(Prompt::Ask(ask)) => {
                 ask.input.push_str(&line);
                 ask.update();
@@ -4511,6 +4625,18 @@ impl App {
                 (w.row, w.on_page) = (row, true);
             }
             self.prompt = Some(Prompt::Settings(w));
+            return;
+        }
+        // A form's calendar: the day for its date field.
+        if let Some(Prompt::Ask(ask)) = &mut self.prompt
+            && matches!(ask.current(), Question::Form { .. })
+        {
+            if let Some(&(_, day)) = self.areas.form_days.iter().find(|(r, _)| r.contains(at))
+                && let Some(value @ crate::plugins::FieldValue::Date(_)) =
+                    ask.form.get_mut(ask.field)
+            {
+                *value = crate::plugins::FieldValue::Date(day.format("%Y-%m-%d").to_string());
+            }
             return;
         }
         if self.prompt.is_some() {

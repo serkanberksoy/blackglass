@@ -70,7 +70,7 @@ cells.
 | AT-35 | Formats: `;%.2f` decimals, `;dt` date-time, `;hm` hours:minutes; dates (`2022-12-31 23:59`) and durations (`23:59`) can be subtracted | ✅ | S | 0.63.3: `;%.Nf`, `;dt` (`YYYY-MM-DD HH:mm`), `;hm` (`HH:MM`); dates and `H:MM` durations are milliseconds, so they subtract |
 | AT-36 | Nesting (`sum(@3..@4)+@3$1`), chaining with `::` and several TBLFM lines | ✅ | S | 0.49.0 |
 | AT-37 | Errors shown in the status bar, the table unchanged | ✅ | S | 0.49.0 |
-| AT-38 | The TBLFM comment line hidden in the live preview (shown while editing it) | 🟡 | S | mdedit shows `<!-- … -->` comments dimmed; hiding is its call |
+| AT-38 | The TBLFM comment line hidden in the live preview (shown while editing it) | ✅ | S | 0.88.0: mdedit 3.16.0's hidden lines (`markdown::set_hidden_lines`); the cursor still moves onto it; `workspace::a_tables_formula_line_hides_until_the_cursor_is_on_it` |
 
 ## 5. Commands and controls
 

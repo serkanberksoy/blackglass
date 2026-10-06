@@ -396,6 +396,8 @@ pub(super) fn render(pieces: &[Piece], env: &Env) -> Result<Rendered, String> {
             Answer::Text(t) => json!({ "text": t }),
             Answer::Choice(i) => json!({ "choice": i }),
             Answer::Choices(all) => json!({ "choices": all }),
+            // A form isn't a template's question.
+            Answer::Fields(_) => Json::Null,
         })
         .collect();
     let results: serde_json::Map<String, Json> = more

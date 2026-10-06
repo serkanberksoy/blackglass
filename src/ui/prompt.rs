@@ -778,6 +778,172 @@ pub fn draw_suggest(buf: &mut Buffer, screen: Rect, app: &mut App, theme: &Theme
 }
 
 /// A plugin's question: a text input, or a list to choose from.
+/// A form: a row per field (its label and value; a choice as `‹ item ›`),
+/// the edited one highlighted, its help under them.
+fn draw_form(
+    buf: &mut Buffer,
+    screen: Rect,
+    app: &mut App,
+    ask: &Ask,
+    title: &str,
+    fields: &[crate::plugins::FormField],
+    theme: &Theme,
+) -> Option<Position> {
+    use crate::plugins::FieldValue;
+    app.areas.form_days.clear();
+    let rows = fields.len() as u16;
+    // Dates: a calendar column on the right.
+    let dates = ask.form.iter().any(|v| matches!(v, FieldValue::Date(_)));
+    let widest = if dates { 64 + CALENDAR } else { 64 };
+    let inner = frame_sized(
+        buf,
+        screen,
+        &format!(" {title} "),
+        widest,
+        rows.max(9) + 4,
+        theme,
+    )?;
+    let calendar = (dates && inner.width > CALENDAR + 30)
+        .then(|| Rect::new(inner.right() - CALENDAR, inner.y, CALENDAR, 9));
+    let full = inner;
+    let inner = match calendar {
+        Some(c) => Rect::new(inner.x, inner.y, c.x - inner.x - 1, inner.height),
+        None => inner,
+    };
+    let label_w = fields
+        .iter()
+        .map(|f| f.label.chars().count())
+        .max()
+        .unwrap_or(0) as u16
+        + 3;
+    let mut cursor = None;
+    for (i, (field, value)) in fields.iter().zip(&ask.form).enumerate() {
+        let y = inner.y + i as u16;
+        let here = i == ask.field;
+        let bg = if here { BG_SELECTED } else { BG_PROMPT };
+        buf.set_style(Rect::new(inner.x, y, inner.width, 1), theme.on(TEXT, bg));
+        let label_style = if here {
+            theme.bold(ACCENT, bg)
+        } else {
+            theme.on(MUTED, bg)
+        };
+        put(buf, inner.x + 1, y, &field.label, label_w, label_style);
+        let x = inner.x + 1 + label_w;
+        let width = inner.right().saturating_sub(x + 1);
+        match value {
+            FieldValue::Text(t) | FieldValue::Date(t) if t.is_empty() => {
+                put(buf, x, y, theme.glyph("—", "-"), width, theme.on(FAINT, bg));
+                if here {
+                    cursor = Some(Position::new(x, y));
+                }
+            }
+            FieldValue::Text(t) | FieldValue::Date(t) => {
+                // The end shows while it's long.
+                let len = t.chars().count();
+                let shown: String = t
+                    .chars()
+                    .skip(len.saturating_sub(width as usize - 1))
+                    .collect();
+                put(buf, x, y, &shown, width, theme.on(TEXT, bg));
+                if here {
+                    cursor = Some(Position::new(x + shown.chars().count() as u16, y));
+                }
+            }
+            FieldValue::Choice(items, chosen) => {
+                let item = items.get(*chosen).map(String::as_str).unwrap_or_default();
+                let text = format!("{} {item} {}", theme.glyph("‹", "<"), theme.glyph("›", ">"));
+                put(buf, x, y, &text, width, theme.on(TEXT, bg));
+            }
+        }
+    }
+    // The edited date's month, its day chosen (or today's).
+    if let (Some(area), Some(value @ FieldValue::Date(_))) = (calendar, ask.form.get(ask.field)) {
+        let today = chrono::Local::now().date_naive();
+        draw_calendar(buf, app, area, value.day(), today, theme);
+    }
+    let rows = rows.max(9);
+    let inner = full;
+    if let Some(field) = fields.get(ask.field) {
+        put(
+            buf,
+            inner.x + 1,
+            inner.y + rows + 1,
+            &field.help,
+            inner.width.saturating_sub(2),
+            theme.on(MUTED, BG_PROMPT),
+        );
+    }
+    hint(
+        buf,
+        inner,
+        rows + 3,
+        if matches!(ask.form.get(ask.field), Some(FieldValue::Date(_))) {
+            "↑↓ field · ⇧←→ day · ⇧↑↓ week · PgUp/PgDn month · Enter save · Esc cancel"
+        } else {
+            "↑↓ field  ·  ←→ choose  ·  Enter save  ·  Esc cancel"
+        },
+        theme,
+    );
+    cursor
+}
+
+/// The calendar column's width.
+const CALENDAR: u16 = 22;
+
+/// A month (the chosen day's, else today's) with the chosen day marked
+/// and today underlined; each day's cell clickable.
+fn draw_calendar(
+    buf: &mut Buffer,
+    app: &mut App,
+    area: Rect,
+    chosen: Option<chrono::NaiveDate>,
+    today: chrono::NaiveDate,
+    theme: &Theme,
+) {
+    use chrono::Datelike;
+    let shown = chosen.unwrap_or(today);
+    let first = shown.with_day(1).expect("every month has a 1st");
+    let title = first.format("%B %Y").to_string();
+    let x0 = area.x + 1;
+    let pad = (20usize.saturating_sub(title.chars().count()) / 2) as u16;
+    put(
+        buf,
+        x0 + pad,
+        area.y,
+        &title,
+        20,
+        theme.bold(ACCENT, BG_PROMPT),
+    );
+    put(
+        buf,
+        x0,
+        area.y + 1,
+        "Mo Tu We Th Fr Sa Su",
+        20,
+        theme.on(MUTED, BG_PROMPT),
+    );
+    let start = first - chrono::Duration::days(i64::from(first.weekday().num_days_from_monday()));
+    for week in 0..6u16 {
+        for d in 0..7u16 {
+            let day = start + chrono::Duration::days(i64::from(week * 7 + d));
+            let cell = Rect::new(x0 + d * 3, area.y + 2 + week, 2, 1);
+            let mut style = if day.month() == first.month() {
+                theme.on(TEXT, BG_PROMPT)
+            } else {
+                theme.on(FAINT, BG_PROMPT)
+            };
+            if Some(day) == chosen {
+                style = theme.bold(TEXT, BG_SELECTED);
+            }
+            if day == today {
+                style = style.add_modifier(ratatui::style::Modifier::UNDERLINED);
+            }
+            put(buf, cell.x, cell.y, &format!("{:>2}", day.day()), 2, style);
+            app.areas.form_days.push((cell, day));
+        }
+    }
+}
+
 fn draw_ask(
     buf: &mut Buffer,
     screen: Rect,
@@ -786,6 +952,7 @@ fn draw_ask(
     theme: &Theme,
 ) -> Option<Position> {
     match ask.current() {
+        Question::Form { title, fields } => draw_form(buf, screen, app, ask, title, fields, theme),
         Question::Text { prompt, default } => {
             let title = format!(" {prompt} ");
             let inner = frame(buf, screen, &title, 3, theme)?;

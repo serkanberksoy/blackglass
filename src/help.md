@@ -74,6 +74,10 @@ window. This page is read-only; **{close-tab}** closes it.
   suggests a color. **{highlight-in-red}** … **{highlight-in-purple}**
   highlight the selection, or recolor the highlight at the cursor;
   **{remove-highlight-color}** makes it plain again.
+- With the Tasks plugin, **Alt+T** (Tasks: Create or edit task) opens a window
+  with every field of the task at the cursor (or a new one): ↑↓ field,
+  typing edits, ←→ choose, Enter saves; on a date, a calendar beside it
+  (Shift+arrows a day or a week, PgUp/PgDn a month, a click a day).
 - Dates in words: type `@` and a date (`@today`, `@tomorrow`, `@next
   friday`, `@in 3 days`, `@oct 20`, `@time` for times): Enter puts in a
   link to that day's note, Shift+Enter keeps your words as its alias.
