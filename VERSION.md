@@ -1,6 +1,6 @@
 # Version history
 
-Current version: **1.0.0**
+Current version: **1.0.1**
 
 ## Versioning rules
 
@@ -28,6 +28,20 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 1.0.1 (2026-10-07)
+
+### Fixed
+- **A vault folder that can't be read** no longer ends the program: the
+  vault picker opens and says why ("Cannot open …: Permission denied"),
+  to choose another; from the command line too.
+- **A vault that can't be written** says so when it opens ("This vault is
+  read-only: notes can be read, but changes can't be saved").
+
+### Changed
+- **The very first run** (no vault opened before) opens the example
+  vault, written to `~/blackglass-example`; later runs offer the recent
+  vaults as before.
 
 ## 1.0.0 (2026-10-07)
 

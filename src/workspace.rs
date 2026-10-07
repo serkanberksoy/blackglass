@@ -557,6 +557,10 @@ impl App {
         app.template_tags();
         app.plugins.borrow_mut().queries.set_vault(&app.vault);
         app.restore_session();
+        if !writable(&app.vault.root) {
+            app.message =
+                "This vault is read-only: notes can be read, but changes can't be saved".into();
+        }
         app
     }
 
@@ -5129,6 +5133,20 @@ fn daily_spot(lines: &[String], heading: &str) -> usize {
         }
     }
     at
+}
+
+/// Whether files can be made in `folder` (a test file, made and removed).
+fn writable(folder: &Path) -> bool {
+    let probe = folder.join(format!(".blackglass-write-check-{}", std::process::id()));
+    let made = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&probe)
+        .is_ok();
+    if made {
+        let _ = std::fs::remove_file(&probe);
+    }
+    made
 }
 
 fn same_file(a: &Path, b: &Path) -> bool {

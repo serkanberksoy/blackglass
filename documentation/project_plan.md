@@ -319,6 +319,26 @@ In order:
     - Builds and tests: a Windows runner in GitHub Actions (with the
       macOS workflow, W-144) running the test suite and building
       `blackglass.exe` / `mdedit.exe` for every release.
+22. **Backlog 2026-10-07: mdedit on crates.io** (not started, for later):
+    publish mdedit as a library on crates.io so blackglass builds without
+    a `../mdedit` checkout beside it (simpler source builds, a simpler
+    Homebrew formula, a step towards homebrew-core) and others can embed
+    the editor (docs on docs.rs).
+    - The name `mdedit` is taken on crates.io (another project); free
+      ones (checked 2026-10-07): `mdedit-tui` (suggested),
+      `mdedit-live`, `tui-mdedit`, `blackglass-mdedit`. The code keeps
+      saying `mdedit` (Cargo renames the dependency). `blackglass` is
+      free too.
+    - mdedit's `Cargo.toml` needs its metadata (description, license,
+      repository, homepage, readme, keywords, categories) and which
+      files to ship (the package is ~2 MB with its tests).
+    - blackglass depends on the published version; development keeps
+      `../mdedit` through a local override. README build steps, the
+      release script and the Homebrew formula (no mdedit resource) change.
+    - Needs a crates.io account and API token (the user's). Published
+      versions are permanent (only yanked); mdedit is published before a
+      blackglass release that needs it; its API follows semver (a
+      breaking change is 4.0).
 
 ## 2. M1: Workspace ✅
 

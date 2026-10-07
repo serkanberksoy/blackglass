@@ -27,7 +27,7 @@ tenth of a second.
 
 <p align="center"><em>Go to a note by typing part of its name, add a task with an estimate and a date in words, and watch the query results add it up.</em></p>
 
-**Version:** 1.0.0 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
+**Version:** 1.0.1 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
 
 ## Contents
 
@@ -222,7 +222,7 @@ where. Optional programs it uses when they're there:
 ```bash
 blackglass --example            # try the example vault: a tour of every feature
 blackglass ~/Notes              # open your own folder of notes
-blackglass                      # choose a vault: a recent one, or any folder
+blackglass                      # choose a vault (the very first time: the example vault)
 blackglass ~/Notes/today.md     # open a note in its vault
 blackglass --help               # all options and keys
 ```

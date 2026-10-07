@@ -8731,3 +8731,19 @@ fn a_task_date_is_saved_as_the_calendar_shows_it() {
     key(&mut app, KeyCode::Enter);
     assert_eq!(lines(&app)[0], format!("- [ ] Paint the shed 📅 {shown}"));
 }
+
+#[test]
+fn a_read_only_vault_says_so() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = vault("read-only", &[("Note.md", "# hi")]);
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o555)).unwrap();
+    let app = App::new(Vault::open(&dir).unwrap());
+    fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).unwrap();
+    assert!(app.message.contains("read-only"), "{}", app.message);
+    let writable = App::new(Vault::open(&dir).unwrap());
+    assert!(
+        !writable.message.contains("read-only"),
+        "{}",
+        writable.message
+    );
+}

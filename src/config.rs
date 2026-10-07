@@ -45,6 +45,12 @@ pub fn recent_vaults(dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Whether blackglass runs for the first time: no vault has been opened
+/// yet (there's no `vaults.toml` in the config folder `dir`).
+pub fn first_run(dir: Option<&Path>) -> bool {
+    dir.is_some_and(|d| !d.join(VAULTS_FILE).exists())
+}
+
 /// Puts `vault` first in `vaults.toml` in `dir` (at most ten are kept).
 pub fn remember_vault(dir: &Path, vault: &Path) -> std::io::Result<()> {
     let mut all = recent_vaults(dir);
@@ -266,6 +272,7 @@ mod tests {
     fn recent_vaults_are_kept_newest_first() {
         let dir = scratch("recent-vaults");
         assert!(recent_vaults(&dir).is_empty());
+        assert!(first_run(Some(&dir)), "no vault opened yet");
         remember_vault(&dir, Path::new("/a")).unwrap();
         remember_vault(&dir, Path::new("/b \"q\"")).unwrap();
         remember_vault(&dir, Path::new("/a")).unwrap();
@@ -273,6 +280,8 @@ mod tests {
             recent_vaults(&dir),
             [PathBuf::from("/a"), PathBuf::from("/b \"q\"")]
         );
+        assert!(!first_run(Some(&dir)), "a vault was opened");
+        assert!(!first_run(None), "no config folder: not asked");
     }
 
     #[test]

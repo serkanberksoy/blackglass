@@ -10,7 +10,8 @@ Usage: blackglass [OPTIONS] [FOLDER | NOTE]
        blackglass --example [FOLDER]
 
   FOLDER          the vault to open (without one, blackglass asks: a
-                  recent vault, or any folder, made if it's new;
+                  recent vault, or any folder, made if it's new; the
+                  very first time, it opens the example vault;
                   'blackglass .' opens the current folder)
   NOTE            a note to open, in the nearest folder above it with
                   .blackglass/ (else in its own folder)

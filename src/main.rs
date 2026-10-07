@@ -64,21 +64,30 @@ fn main() -> io::Result<()> {
 }
 
 /// Opens `path` (a vault or a note; `None`: choose a vault first) and runs.
+/// The very first run without a folder opens the example vault; a folder
+/// that can't be opened goes back to choosing one, saying why.
 fn run_with(path: Option<std::path::PathBuf>, mouse: bool) -> io::Result<()> {
-    // Without a folder: choose a vault first (recent ones, or any folder).
-    let path = match path {
-        Some(path) => path,
-        None => match choose_vault()? {
+    let mut path = path;
+    let mut problem = None;
+    if path.is_none() && config::first_run(config::config_dir().as_deref()) {
+        match blackglass::example::install(&blackglass::example::default_folder()) {
+            Ok(welcome) => path = Some(welcome),
+            Err(e) => problem = Some(format!("The example vault: {e}")),
+        }
+    }
+    let (vault, note) = loop {
+        // Without a folder: choose a vault (recent ones, or any folder).
+        let chosen = match path.take() {
             Some(path) => path,
-            None => return Ok(()),
-        },
-    };
-    let (folder, note) = config::vault_and_note(Some(&path));
-    let vault = match Vault::open(&folder) {
-        Ok(vault) => vault,
-        Err(e) => {
-            eprintln!("blackglass: cannot open {}: {e}", folder.display());
-            std::process::exit(1);
+            None => match choose_vault(problem.take())? {
+                Some(path) => path,
+                None => return Ok(()),
+            },
+        };
+        let (folder, note) = config::vault_and_note(Some(&chosen));
+        match Vault::open(&folder) {
+            Ok(vault) => break (vault, note),
+            Err(e) => problem = Some(format!("Cannot open {}: {e}", folder.display())),
         }
     };
 
@@ -92,7 +101,12 @@ fn run_with(path: Option<std::path::PathBuf>, mouse: bool) -> io::Result<()> {
     // the keyboard shortcuts, from the user's config folder.
     if let Some(path) = config::settings_path() {
         match std::fs::read_to_string(&path) {
-            Ok(text) => app.message = app.use_editor_config(&text).join("; "),
+            Ok(text) => {
+                let warnings = app.use_editor_config(&text).join("; ");
+                if !warnings.is_empty() {
+                    app.message = warnings;
+                }
+            }
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => app.message = format!("Cannot read {}: {e}", path.display()),
         }
@@ -139,11 +153,16 @@ fn run_with(path: Option<std::path::PathBuf>, mouse: bool) -> io::Result<()> {
 
 /// The vault picker on its own screen, before blackglass opens a vault;
 /// `None` if it was left with Esc.
-fn choose_vault() -> io::Result<Option<std::path::PathBuf>> {
+/// The vault picker; `problem` (why the last folder couldn't be opened)
+/// is shown in it.
+fn choose_vault(problem: Option<String>) -> io::Result<Option<std::path::PathBuf>> {
     let recent = config::config_dir()
         .map(|dir| config::recent_vaults(&dir))
         .unwrap_or_default();
     let mut picker = VaultPicker::new(recent, config::home());
+    if let Some(problem) = problem {
+        picker.note = problem;
+    }
     let caps = Capabilities::from_env();
     let dir = config::config_dir();
     let palette = dir
