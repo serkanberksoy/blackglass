@@ -193,6 +193,13 @@ pub enum Effect {
     /// [`Plugin::row_action`]): a suggestion telling its plugin it was
     /// chosen.
     RowAction(String),
+    /// Put `line` in today's daily note, at the end of the list under its
+    /// `heading` (at the note's end without one); the note is made first
+    /// if it isn't there (Periodic Notes, with its template).
+    AddToDaily {
+        heading: String,
+        line: String,
+    },
 }
 
 /// What a plugin suggests while typing ([`Plugin::suggestions`]): the
@@ -434,6 +441,12 @@ pub trait Plugin {
     /// The theme changed: drawn results (which use its colors) are out of
     /// date.
     fn on_theme_changed(&mut self) {}
+
+    /// The daily note for `day`, relative to the vault and without `.md`
+    /// (Periodic Notes' folder and name), if the plugin keeps them.
+    fn daily_note(&self, _day: chrono::NaiveDate) -> Option<String> {
+        None
+    }
 
     /// The name to show for the note at `path` (absolute) wherever notes
     /// are named (the explorer, tabs, the switcher, suggestions, search
@@ -1132,6 +1145,15 @@ impl Plugins {
     }
 
     /// The first enabled plugin's name for the note at `path`.
+    /// The daily note for `day` ([`Plugin::daily_note`]), if a plugin
+    /// keeps them.
+    pub fn daily_note(&self, day: chrono::NaiveDate) -> Option<String> {
+        self.entries
+            .iter()
+            .filter(|e| e.enabled)
+            .find_map(|e| e.plugin.daily_note(day))
+    }
+
     pub fn display_name(&self, path: &Path) -> Option<String> {
         self.entries
             .iter()

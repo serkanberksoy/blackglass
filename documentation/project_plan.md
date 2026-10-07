@@ -282,6 +282,43 @@ In order:
     - **Publish (W-116):** notes with `publish: true` as a static site in
       a folder, with backlinks, tags, search and queries as their
       results, and a local preview (`requirements/publish_requirements.md`).
+20. **Queued 2026-10-07: macOS binaries (W-144)** (not started, for later):
+    - A GitHub Actions workflow in each repository (blackglass and
+      mdedit), run when a release is published: build on macOS runners
+      for Apple Silicon (`aarch64-apple-darwin`) and Intel
+      (`x86_64-apple-darwin`), join them into one universal binary
+      (`lipo`), and upload `<name>-<version>-macos.tar.gz` and checksums
+      to the same release. blackglass's checks out mdedit beside it (a
+      path dependency). Then run it on the latest releases too.
+    - Not cross-compiled here: Apple's SDK may only be used on Apple
+      hardware, and there's no Mac to test on.
+    - Pushing `.github/workflows/` needs a token with the "Workflows"
+      permission (the current fine-grained token may lack it), or the
+      files are committed from GitHub's website.
+    - Not notarized (that needs a paid Apple Developer account): the
+      release notes say to clear the quarantine flag once
+      (`xattr -d com.apple.quarantine blackglass`), or to download with
+      `curl`.
+    - The code already handles macOS: `pbcopy` / `pbpaste`, `open`.
+21. **Queued 2026-10-07: Windows support (W-145)** (not started, for
+    later; it compiles for `x86_64-pc-windows-gnu` with no errors or
+    warnings, checked 2026-10-07):
+    - The config folder: `%APPDATA%\blackglass` on Windows (now only
+      `$XDG_CONFIG_HOME` / `$HOME`, which Windows usually lacks, so
+      settings, keys, the theme and recent vaults aren't kept).
+    - Copy and paste: `clip.exe` and PowerShell's `Get-Clipboard` (in
+      blackglass and mdedit).
+    - Opening files and links: `cmd /C start "" <path>`.
+    - Shell commands (the Git plugin's script, Templater's user
+      commands): `cmd /C` instead of `sh -c`.
+    - Paths: about 90 places turn paths into text; check each keeps `/`
+      in the vault's relative paths (the explorer, renames, the session),
+      as Dataview's index does.
+    - The mouse's side buttons: crossterm's Windows input reads only the
+      left, middle and right buttons.
+    - Builds and tests: a Windows runner in GitHub Actions (with the
+      macOS workflow, W-144) running the test suite and building
+      `blackglass.exe` / `mdedit.exe` for every release.
 
 ## 2. M1: Workspace ✅
 

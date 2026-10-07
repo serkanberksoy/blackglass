@@ -432,6 +432,9 @@ pub struct App {
     moving: Option<PathBuf>,
     /// A calendar's day (`2026-03-05`) whose note "Create it?" asks about.
     creating_day: Option<String>,
+    /// A line waiting for today's daily note to be made: the note, the
+    /// heading it goes under, the line.
+    daily_line: Option<(PathBuf, String, String)>,
     /// The unsaved text last put in the index: its note and a hash.
     synced: Option<(PathBuf, u64)>,
     /// Watches the vault for changes made elsewhere.
@@ -529,6 +532,7 @@ impl App {
             rendered: false,
             moving: None,
             creating_day: None,
+            daily_line: None,
             synced: None,
             watcher: crate::watch::Watcher::start(&vault_root, crate::watch::INTERVAL),
             session_saved: String::new(),
@@ -652,15 +656,16 @@ impl App {
 
     /// The enabled plugins' commands that have default keys, with their
     /// keys now: (name, keys), for the empty editor side.
-    pub fn keyed_plugin_commands(&self) -> Vec<(String, String)> {
+    pub fn keyed_plugin_commands(&self) -> Vec<(String, String, String)> {
         self.plugins
             .borrow()
             .commands()
             .into_iter()
             .filter(|(_, _, c)| !c.keys.is_empty())
             .map(|(plugin, _, c)| {
-                let keys = self.keymap.keys(&format!("plugin:{plugin}:{}", c.id));
-                (c.name.to_string(), keymap::describe(keys))
+                let id = format!("plugin:{plugin}:{}", c.id);
+                let keys = keymap::describe(self.keymap.keys(&id));
+                (id, c.name.to_string(), keys)
             })
             .collect()
     }
@@ -1400,6 +1405,16 @@ impl App {
         };
         let command = self.all_commands().into_iter().find(|c| c.id == id)?;
         match command.action {
+            // With no note open, Ctrl+T (make the line a task) adds a quick
+            // task to today's note.
+            commands::Action::Key(_)
+                if id == "toggle-task"
+                    && self.view().is_none()
+                    && self.plugins.borrow().is_enabled("tasks") =>
+            {
+                self.call_plugin("tasks", "quick-task", None);
+                Some(Action::Continue)
+            }
             commands::Action::Key(native) if Chord::of(&native) == chord => None,
             // Without a selection, Ctrl+X is the editor's (close the tab).
             commands::Action::Host(Host::Extract) => {
@@ -1778,6 +1793,7 @@ impl App {
         self.sync_unsaved();
         let outside = self.outside_changes();
         let effects = self.with_context(|ctx| self.plugins.borrow_mut().tick(ctx));
+        let waiting = self.daily_line.is_some();
         let happened = outside || !effects.is_empty();
         for (id, effect) in effects {
             match effect {
@@ -1792,7 +1808,8 @@ impl App {
                 effect => self.apply_effect(id, "tick", effect),
             }
         }
-        happened
+        self.flush_daily_line();
+        happened || (waiting && self.daily_line.is_none())
     }
 
     /// Takes in what the watcher saw changed outside blackglass: the vault
@@ -2296,6 +2313,7 @@ impl App {
                     self.apply_effect(id, command, effect);
                 }
             }
+            Effect::AddToDaily { heading, line } => self.add_to_daily(heading, line),
             Effect::EditNote {
                 path,
                 from,
@@ -2671,6 +2689,64 @@ impl App {
 
     /// [`Effect::EditNote`]: lines of a note, open or not, if they still
     /// read `expect`.
+    /// Puts `line` in today's daily note under `heading` ([`Effect::AddToDaily`]),
+    /// making the note first if it isn't there: through Periodic Notes
+    /// (its folder, name and template; it may take a moment, then
+    /// [`App::tick`] finishes), else as `YYYY-MM-DD.md` in the vault.
+    fn add_to_daily(&mut self, heading: String, line: String) {
+        let today = chrono::Local::now().date_naive();
+        let daily = self.plugins.borrow().daily_note(today);
+        let rel = daily
+            .clone()
+            .unwrap_or_else(|| today.format("%Y-%m-%d").to_string());
+        let path = self.vault.root.join(format!("{rel}.md"));
+        self.daily_line = Some((path.clone(), heading, line));
+        let open = self.tabs.iter().any(|v| v.path.as_deref() == Some(&path));
+        if !path.is_file() && !open {
+            if daily.is_some() {
+                let day = today.format("%Y-%m-%d");
+                self.row_action(&format!("plugin:periodic-notes:open-day:{day}"));
+            } else {
+                let root = self.vault.root.clone();
+                if let Err(e) = self.create_note_with(&root, &rel, "") {
+                    self.message = e;
+                    self.daily_line = None;
+                    return;
+                }
+            }
+        }
+        self.flush_daily_line();
+    }
+
+    /// The line waiting for today's note goes in once the note is there.
+    fn flush_daily_line(&mut self) {
+        let Some((path, ..)) = &self.daily_line else {
+            return;
+        };
+        let tab = self
+            .tabs
+            .iter()
+            .position(|v| v.path.as_deref() == Some(path));
+        let lines = match tab {
+            Some(i) => self.tabs[i].editor.lines.clone(),
+            None => match std::fs::read_to_string(path) {
+                Ok(text) => crate::vault::split_lines(&text),
+                // Not made yet (a template still fetching): at a tick.
+                Err(_) => return,
+            },
+        };
+        let (path, heading, line) = self.daily_line.take().expect("checked above");
+        let at = daily_spot(&lines, &heading);
+        let name = path
+            .file_stem()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        match self.edit_note(&path, at, at, std::slice::from_ref(&line), &[]) {
+            Ok(()) => self.message = format!("Added to {name}: {line}"),
+            Err(e) => self.message = e,
+        }
+    }
+
     fn edit_note(
         &mut self,
         path: &Path,
@@ -4963,6 +5039,22 @@ fn replace_lines(
     let count = view.editor.lines.len();
     let to = to.min(count);
     if from >= to {
+        // No lines replaced: `lines` go in before line `from` (after the
+        // last line when it's past the end).
+        if lines.is_empty() || from > count {
+            return;
+        }
+        let text = lines.join("\n");
+        view.editor.anchor = None;
+        if from < count {
+            (view.editor.row, view.editor.col) = (from, 0);
+            view.handle_paste(&format!("{text}\n"), shared);
+        } else {
+            let last = count - 1;
+            let end = view.editor.lines[last].chars().count();
+            (view.editor.row, view.editor.col) = (last, end);
+            view.handle_paste(&format!("\n{text}"), shared);
+        }
         return;
     }
     let len = |view: &EditorView, row: usize| view.editor.lines[row].chars().count();
@@ -5010,6 +5102,35 @@ fn place_cursor(view: &mut EditorView, text: &str, offset: usize) {
 }
 
 /// Whether two paths are the same file (e.g. through a symbolic link).
+/// Where a new line goes under `heading` (any level, any case): after the
+/// list right under it (or right under the heading); at the end without
+/// one (before the file's last empty line).
+fn daily_spot(lines: &[String], heading: &str) -> usize {
+    let is_heading = |l: &str| l.starts_with('#') && l.trim_start_matches('#').starts_with(' ');
+    let Some(h) = lines.iter().position(|l| {
+        is_heading(l)
+            && l.trim_start_matches('#')
+                .trim()
+                .eq_ignore_ascii_case(heading)
+    }) else {
+        return match lines.last() {
+            Some(last) if last.is_empty() => lines.len() - 1,
+            _ => lines.len(),
+        };
+    };
+    let mut at = h + 1;
+    for (i, l) in lines.iter().enumerate().skip(h + 1) {
+        if is_heading(l) {
+            break;
+        }
+        let item = l.trim_start();
+        if item.starts_with("- ") || item.starts_with("* ") || item.starts_with("+ ") {
+            at = i + 1;
+        }
+    }
+    at
+}
+
 fn same_file(a: &Path, b: &Path) -> bool {
     match (a.canonicalize(), b.canonicalize()) {
         (Ok(a), Ok(b)) => a == b,

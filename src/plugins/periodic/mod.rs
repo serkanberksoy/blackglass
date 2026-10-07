@@ -978,14 +978,22 @@ impl Plugin for PeriodicNotes {
 
     fn row_action(&mut self, payload: &str, ctx: &Context) -> Effect {
         // `day:2026-03-05` (a Dataview calendar's day without notes): its
-        // daily note, asked about first if it isn't there.
-        match payload
-            .strip_prefix("day:")
-            .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
-        {
-            Some(day) => self.calendar_open(Period::Daily, day, ctx),
+        // daily note, asked about first if it isn't there; `open-day:`
+        // makes it without asking (a task added to it).
+        let day = |p: &str| NaiveDate::parse_from_str(p, "%Y-%m-%d").ok();
+        if let Some(d) = payload.strip_prefix("open-day:").and_then(day) {
+            return self.open_date(Period::Daily, d, ctx);
+        }
+        match payload.strip_prefix("day:").and_then(day) {
+            Some(d) => self.calendar_open(Period::Daily, d, ctx),
             None => Effect::None,
         }
+    }
+
+    fn daily_note(&self, day: NaiveDate) -> Option<String> {
+        self.settings(Period::Daily)
+            .enabled
+            .then(|| self.rel(Period::Daily, self.start(Period::Daily, day)))
     }
 
     fn answer(&mut self, id: &str, answers: &[Answer], ctx: &Context) -> Effect {

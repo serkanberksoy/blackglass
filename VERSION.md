@@ -1,6 +1,6 @@
 # Version history
 
-Current version: **0.96.5**
+Current version: **0.97.4**
 
 ## Versioning rules
 
@@ -26,6 +26,78 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 0.97.4 (2026-10-07)
+
+### Changed
+- **The README, rewritten for new visitors:** what blackglass is, who
+  it's for and why, in its first lines; a demo GIF and screenshots of the
+  workspace, queries, tasks, boards, diagrams and themes; sections for
+  features, installation, a quick start and configuration; how it's
+  built (a diagram); a request for a star. The full feature list moved
+  to `documentation/features.md`.
+- The screenshots and the GIF are drawn by blackglass itself:
+  `tests/screenshots.rs` drives the example vault and writes each screen
+  as an SVG, and `scripts/screenshots.sh` turns them into PNGs and the
+  GIF (`documentation/images/`).
+- The start screen lists Alt+V (a note's modes: live preview, source,
+  view) under "Moving around".
+
+### Fixed
+- **The task window:** a date in words (`next friday`) is saved as the
+  day its calendar showed. The calendar read it as next week's Friday,
+  but this week's was saved.
+
+## 0.97.3 (2026-10-07)
+
+### Changed
+- Queued: Windows support (W-145; the plan's item 21): what's needed
+  besides compiling, which it already does.
+
+## 0.97.2 (2026-10-07)
+
+### Changed
+- The start screen lists Settings (Alt+, / Ctrl+,) with the commands,
+  before Help and Quit.
+
+## 0.97.1 (2026-10-07)
+
+### Changed
+- The start screen (no note open) has a "Moving around" section: the
+  sidebar and the note (Ctrl+B), the sidebar's tabs (Tab / Shift+Tab),
+  choosing in it, back to the note (Esc), note tabs, back / forward, the
+  sidebar hidden or shown, every command (Ctrl+P), with the keys they
+  have now. A terminal too short for it puts the two sections side by
+  side.
+- README: Tab / Shift+Tab go through the plugins' sidebar tabs too.
+
+## 0.97.0 (2026-10-07)
+
+### Added
+- **Quick task (Tasks):** with no note open, **Ctrl+T** asks for one line
+  and adds it as a task to today's daily note, under its Tasks heading
+  (the note made from its template first if it isn't there). "Add quick
+  task" in the palette does it from anywhere. With a note open, Ctrl+T
+  still makes the line a task.
+- **The task window (Alt+T) with no note open** adds its task to today's
+  daily note the same way.
+- **An Estimate field in the task window**, before Due: it writes
+  `[estimate:: 2h]` (Dataview's field, so estimates add up) and shows a
+  task's estimate when it's edited.
+- The start screen lists "Add quick task" (Ctrl+T) and "Add task (task
+  window)" (Alt+T).
+- Plugins can add a line to today's daily note (`Effect::AddToDaily`)
+  and say where daily notes are (`Plugin::daily_note`).
+
+### Fixed
+- Editing a task with an estimate no longer switches its dates to
+  Dataview's format.
+
+## 0.96.6 (2026-10-07)
+
+### Changed
+- Queued: macOS binaries for every release (W-144), built by GitHub
+  Actions on macOS runners as universal binaries (the plan's item 20).
 
 ## 0.96.5 (2026-10-07)
 

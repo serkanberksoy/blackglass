@@ -4073,6 +4073,7 @@ fn tasks_are_created_edited_and_postponed() {
     key(&mut app, KeyCode::Down); // status
     key(&mut app, KeyCode::Down); // priority
     key(&mut app, KeyCode::Left); // None → Medium
+    key(&mut app, KeyCode::Down); // estimate
     key(&mut app, KeyCode::Down); // due
     typing(&mut app, "tomorrow");
     key(&mut app, KeyCode::Enter);
@@ -4090,8 +4091,8 @@ fn tasks_are_created_edited_and_postponed() {
         rows.contains("Draft") && rows.contains("2026-10-01"),
         "{rows}"
     );
-    for _ in 0..3 {
-        key(&mut app, KeyCode::Down); // due
+    for _ in 0..4 {
+        key(&mut app, KeyCode::Down); // estimate, due
     }
     ctrl(&mut app, 'u');
     typing(&mut app, "2026-10-05");
@@ -4105,7 +4106,7 @@ fn tasks_are_created_edited_and_postponed() {
     alt(&mut app, KeyCode::Char('t'));
     key(&mut app, KeyCode::Down);
     key(&mut app, KeyCode::Right); // status: in progress
-    for _ in 0..6 {
+    for _ in 0..7 {
         key(&mut app, KeyCode::Down); // created
     }
     typing(&mut app, "2026-09-30");
@@ -4137,8 +4138,8 @@ fn tasks_are_created_edited_and_postponed() {
     alt(&mut app, KeyCode::Char('t'));
     key(&mut app, KeyCode::Down);
     key(&mut app, KeyCode::Left); // status back: to do
-    for _ in 0..2 {
-        key(&mut app, KeyCode::Down); // due
+    for _ in 0..3 {
+        key(&mut app, KeyCode::Down); // estimate, due
     }
     ctrl(&mut app, 'u');
     typing(&mut app, "someday");
@@ -7954,8 +7955,8 @@ fn task_dates_are_chosen_on_a_calendar() {
     );
     app.open(&note(&app, "T.md"));
     alt(&mut app, KeyCode::Char('t'));
-    for _ in 0..3 {
-        key(&mut app, KeyCode::Down); // due
+    for _ in 0..4 {
+        key(&mut app, KeyCode::Down); // estimate, due
     }
     let rows = screen(&mut app, 120, 40).join("\n");
     assert!(
@@ -8553,4 +8554,178 @@ fn back_and_forward_can_take_the_side_buttons_keys() {
     let before = app.active;
     press(&mut app, KeyCode::PageUp, KeyModifiers::CONTROL);
     assert_ne!(app.active, before, "{}", app.message);
+}
+
+#[test]
+fn the_task_window_has_an_estimate() {
+    let mut app = tasks_app(
+        "tasks-estimate",
+        &[(
+            "T.md",
+            "- [ ] Paint the fence [estimate:: 2h] 📅 2026-10-12\n- \n",
+        )],
+    );
+    app.open(&note(&app, "T.md"));
+    alt(&mut app, KeyCode::Char('t'));
+    let rows = screen(&mut app, 110, 40);
+    let at = |name: &str| rows.iter().position(|r| r.contains(name)).unwrap();
+    assert!(at("Estimate") < at("Due"), "before Due: {rows:#?}");
+    assert!(rows[at("Estimate")].contains("2h"), "filled in: {rows:#?}");
+    assert!(
+        !rows[at("Description")].contains("estimate::"),
+        "not in the description: {rows:#?}"
+    );
+    for _ in 0..3 {
+        key(&mut app, KeyCode::Down); // estimate
+    }
+    ctrl(&mut app, 'u');
+    typing(&mut app, "1h 30m");
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(
+        lines(&app)[0],
+        "- [ ] Paint the fence [estimate:: 1h 30m] 📅 2026-10-12",
+        "{}",
+        app.message
+    );
+    // A new task with one; none written when it's empty.
+    put_cursor(&mut app, 1, 2);
+    alt(&mut app, KeyCode::Char('t'));
+    typing(&mut app, "Buy paint");
+    for _ in 0..3 {
+        key(&mut app, KeyCode::Down);
+    }
+    typing(&mut app, "45m");
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(lines(&app)[1], "- [ ] Buy paint [estimate:: 45m]");
+    alt(&mut app, KeyCode::Char('t'));
+    for _ in 0..3 {
+        key(&mut app, KeyCode::Down);
+    }
+    ctrl(&mut app, 'u');
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(lines(&app)[1], "- [ ] Buy paint");
+}
+
+/// A vault with Tasks and Periodic Notes (daily notes in Journal/, from a
+/// template with a Tasks heading).
+fn quick_task_app(name: &str) -> (App, PathBuf) {
+    let dir = vault(
+        name,
+        &[
+            (
+                STATE_FILE,
+                "installed = [\"tasks\", \"periodic-notes\"]\nenabled = [\"tasks\", \"periodic-notes\"]\n",
+            ),
+            (
+                ".blackglass/plugins/periodic-notes/settings.toml",
+                "[daily]\nfolder = \"Journal\"\ntemplate = \"Templates/Daily\"\n",
+            ),
+            (
+                "Templates/Daily.md",
+                "# Today\n\n## Tasks\n\n## Notes\n- a note\n",
+            ),
+        ],
+    );
+    (App::new(Vault::open(&dir).unwrap()), dir)
+}
+
+#[test]
+fn with_no_note_open_tasks_go_to_todays_daily_note() {
+    let (mut app, dir) = quick_task_app("quick-task");
+    let daily = dir.join(format!("Journal/{}.md", day(0)));
+    // The start screen offers both.
+    let rows = screen(&mut app, 110, 30);
+    let at = |name: &str| {
+        rows.iter()
+            .position(|r| r.contains(name))
+            .unwrap_or_else(|| panic!("{name}: {rows:#?}"))
+    };
+    assert!(rows[at("Add quick task")].contains("Ctrl+T"), "{rows:#?}");
+    assert!(
+        rows[at("Add task (task window)")].contains("Alt+T"),
+        "{rows:#?}"
+    );
+    assert!(at("Add quick task") < at("Add task (task window)"));
+    // Ctrl+T: one line, into today's note (made from its template).
+    ctrl(&mut app, 't');
+    typing(&mut app, "Call the plumber");
+    key(&mut app, KeyCode::Enter);
+    let text = fs::read_to_string(&daily).unwrap_or_else(|e| panic!("{e}: {}", app.message));
+    assert_eq!(
+        text, "# Today\n\n## Tasks\n- [ ] Call the plumber\n\n## Notes\n- a note\n",
+        "under its Tasks heading"
+    );
+    // Alt+T: the task window, the next task after it.
+    app.close(app.active);
+    while !app.tabs.is_empty() {
+        app.close(0);
+    }
+    alt(&mut app, KeyCode::Char('t'));
+    typing(&mut app, "Order paint");
+    for _ in 0..3 {
+        key(&mut app, KeyCode::Down); // estimate
+    }
+    typing(&mut app, "30m");
+    key(&mut app, KeyCode::Enter);
+    let text = fs::read_to_string(&daily).unwrap();
+    assert!(
+        text.contains(
+            "## Tasks\n- [ ] Call the plumber\n- [ ] Order paint [estimate:: 30m]\n\n## Notes"
+        ),
+        "{text}"
+    );
+    // With a note open, Ctrl+T still makes the line a task.
+    app.open(&daily);
+    let row = lines(&app).iter().position(|l| l == "- a note").unwrap();
+    put_cursor(&mut app, row, 0);
+    ctrl(&mut app, 't');
+    assert_eq!(lines(&app)[row], "- [ ] a note");
+}
+
+#[test]
+fn the_start_screen_shows_how_to_move_around() {
+    let mut app = app("start-moving");
+    let rows = screen(&mut app, 110, 40);
+    let at = |name: &str| {
+        rows.iter()
+            .position(|r| r.contains(name))
+            .unwrap_or_else(|| panic!("{name}: {rows:#?}"))
+    };
+    assert!(at("Moving around") > at("Quit"), "a section of its own");
+    let settings = at("Settings");
+    assert!(rows[settings].contains("Alt+, / Ctrl+,"), "{rows:#?}");
+    assert!(settings < at("Help"), "with the commands: {rows:#?}");
+    for (what, keys) in [
+        ("Sidebar / note", "Ctrl+B"),
+        ("Next / previous sidebar tab", "Tab / Shift+Tab"),
+        ("Choose in the sidebar", "↑↓ Enter"),
+        ("Back to the note", "Esc"),
+        ("Previous / next note tab", "Alt+Left / Alt+Right"),
+        ("Back / forward", "Ctrl+Alt+Left / Ctrl+Alt+Right"),
+        ("Hide / show the sidebar", "Alt+B"),
+        ("Note mode: preview, source, view", "Alt+V"),
+    ] {
+        assert!(rows[at(what)].contains(keys), "{what} {keys}: {rows:#?}");
+    }
+    // A short terminal: the two sections side by side, nothing cut off.
+    let rows = screen(&mut app, 140, 18);
+    let title = rows.iter().find(|r| r.contains("No file is open")).unwrap();
+    assert!(title.contains("Moving around"), "{rows:#?}");
+    assert!(rows.iter().any(|r| r.contains("All commands")), "{rows:#?}");
+}
+
+#[test]
+fn a_task_date_is_saved_as_the_calendar_shows_it() {
+    let mut app = tasks_app("tasks-date-words", &[("T.md", "- [ ] Paint the shed\n")]);
+    app.open(&note(&app, "T.md"));
+    alt(&mut app, KeyCode::Char('t'));
+    for _ in 0..4 {
+        key(&mut app, KeyCode::Down); // estimate, due
+    }
+    typing(&mut app, "next friday");
+    let now = chrono::Local::now().naive_local();
+    let shown =
+        blackglass::nldates::parse_date("next friday", now, chrono::Weekday::Mon).expect("a day");
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(lines(&app)[0], format!("- [ ] Paint the shed 📅 {shown}"));
 }

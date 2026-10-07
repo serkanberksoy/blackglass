@@ -66,6 +66,26 @@ enum Spot {
     Here(usize),
     /// A line of another note (a query result the cursor is on).
     There(PathBuf, usize),
+    /// A new task in today's daily note (no note is open).
+    Daily,
+}
+
+/// The heading of the daily note that new tasks go under.
+const DAILY_HEADING: &str = "Tasks";
+
+/// A task's `[estimate:: 2h]` (Dataview's inline field): the description
+/// without it, and its value.
+fn split_estimate(description: &str) -> (String, String) {
+    static FIELD: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"\s*\[estimate::\s*([^\]]*)\]").expect("a valid regex")
+    });
+    match FIELD.captures(description) {
+        Some(c) => (
+            FIELD.replace(description, "").trim().to_string(),
+            c[1].trim().to_string(),
+        ),
+        None => (description.to_string(), String::new()),
+    }
 }
 
 /// Today (the local date).
@@ -173,6 +193,10 @@ impl Tasks {
                 lines: vec![line],
                 expect: before.into_iter().collect(),
             },
+            Spot::Daily => Effect::AddToDaily {
+                heading: DAILY_HEADING.into(),
+                line,
+            },
         }
     }
 
@@ -256,23 +280,22 @@ impl Tasks {
     /// The create-or-edit window (TK-20): every field of the task at the
     /// cursor (or of a new one), each with its value or default.
     fn ask_edit(&mut self, ctx: &Context) -> Effect {
-        let Some(note) = ctx.note else {
-            return Effect::Message("Open a note first".into());
-        };
-        // A query result the cursor is on, or the cursor's line.
-        let (spot, task, line) = match self.target(ctx) {
-            Some((Spot::There(path, at), t)) => {
+        // A query result the cursor is on, or the cursor's line; with no
+        // note open, a new task for today's daily note.
+        let (spot, task, line) = match (self.target(ctx), ctx.note) {
+            (Some((Spot::There(path, at), t)), _) => {
                 let raw = t.raw.clone();
                 (Spot::There(path, at), Some(t), raw)
             }
-            _ => {
+            (_, Some(note)) => {
                 let line = note.text.lines().nth(note.row).unwrap_or_default();
                 (Spot::Here(note.row), Task::parse(line), line.to_string())
             }
+            (_, None) => (Spot::Daily, None, String::new()),
         };
         let line = line.as_str();
         self.editing = Some((spot, task.as_ref().map(|t| t.raw.clone())));
-        let description = match &task {
+        let full = match &task {
             // Tags written after the fields too, so they stay.
             Some(t) => {
                 let mut d = t.description.clone();
@@ -290,6 +313,8 @@ impl Tasks {
                 .trim()
                 .to_string(),
         };
+        // The estimate has its own field.
+        let (description, estimate) = split_estimate(&full);
         // Priorities as the original lists them (highest first, none in
         // the middle).
         self.priority_items = Priority::ALL.iter().map(|(p, _, _)| *p).collect();
@@ -371,6 +396,11 @@ impl Tasks {
                     p_items,
                     p_at,
                 ),
+                FormField::text(
+                    "Estimate",
+                    "How long it takes: 2h, 30m, 1h 30m (empty: none)",
+                    &estimate,
+                ),
                 FormField::date("Due", when, &date(DateField::Due)),
                 FormField::date("Scheduled", when, &date(DateField::Scheduled)),
                 FormField::date("Start", when, &date(DateField::Start)),
@@ -429,26 +459,35 @@ impl Tasks {
         let now = chrono::Local::now().naive_local();
         let mut dates = Vec::new();
         for (i, field) in [
-            (3, DateField::Due),
-            (4, DateField::Scheduled),
-            (5, DateField::Start),
-            (7, DateField::Created),
-            (8, DateField::Done),
-            (9, DateField::Cancelled),
+            (4, DateField::Due),
+            (5, DateField::Scheduled),
+            (6, DateField::Start),
+            (8, DateField::Created),
+            (9, DateField::Done),
+            (10, DateField::Cancelled),
         ] {
             let typed = text(i);
             if typed.is_empty() {
                 dates.push((field, None));
                 continue;
             }
-            match query::date(&typed, today)
-                .or_else(|| crate::nldates::parse_date(&typed, now, chrono::Weekday::Mon))
+            // As the window's calendar reads it (what was shown is what's
+            // saved), else as a query reads dates.
+            match crate::nldates::parse_date(&typed, now, chrono::Weekday::Mon)
+                .or_else(|| query::date(&typed, today))
             {
                 Some(d) => dates.push((field, Some(d))),
                 None => return Effect::Message(format!("Tasks: can't read the date {typed:?}")),
             }
         }
-        let rule = text(6);
+        let estimate = text(3);
+        if !estimate.is_empty() && crate::plugins::dataview::value::Dur::parse(&estimate).is_none()
+        {
+            return Effect::Message(format!(
+                "Tasks: can't read the estimate {estimate:?} (2h, 30m, 1h 30m)"
+            ));
+        }
+        let rule = text(7);
         if !rule.is_empty()
             && let Err(e) = task::Recurrence::parse(&rule)
         {
@@ -458,7 +497,11 @@ impl Tasks {
         let mut t = old
             .clone()
             .unwrap_or_else(|| Task::parse("- [ ] x").expect("a task line is a task"));
-        t.description = text(0);
+        t.description = if estimate.is_empty() {
+            text(0)
+        } else {
+            format!("{} [estimate:: {estimate}]", text(0))
+        };
         t.priority = self
             .priority_items
             .get(choice(2))
@@ -468,14 +511,14 @@ impl Tasks {
             t.dates[field as usize] = date;
         }
         t.recurrence = Some(rule).filter(|r| !r.is_empty());
-        t.id = Some(text(10)).filter(|i| !i.is_empty());
-        t.depends = text(11)
+        t.id = Some(text(11)).filter(|i| !i.is_empty());
+        t.depends = text(12)
             .split([',', ' '])
             .map(str::trim)
             .filter(|d| !d.is_empty())
             .map(String::from)
             .collect();
-        t.on_completion = match choice(12) {
+        t.on_completion = match choice(13) {
             1 => Some("keep".into()),
             2 => Some("delete".into()),
             _ => None,
@@ -495,7 +538,12 @@ impl Tasks {
             }
         }
         t.status = symbol;
-        let dataview = self.dataview || before.as_deref().is_some_and(|b| b.contains("::"));
+        // Dataview's format when the task had its fields (an estimate
+        // isn't one of them).
+        let dataview = self.dataview
+            || before
+                .as_deref()
+                .is_some_and(|b| split_estimate(b).0.contains("::"));
         let line = write(&t, dataview);
         Tasks::put(spot, before, line, ctx)
     }
@@ -752,6 +800,7 @@ impl Plugin for Tasks {
         vec![
             PluginCommand::new("toggle-done", "Toggle task done"),
             PluginCommand::new("create-or-edit", "Create or edit task").keys("Alt+T"),
+            PluginCommand::new("quick-task", "Add quick task"),
             PluginCommand::new("postpone", "Postpone task"),
         ]
     }
@@ -760,6 +809,10 @@ impl Plugin for Tasks {
         match id {
             "toggle-done" => self.toggle_line(ctx),
             "create-or-edit" => self.ask_edit(ctx),
+            "quick-task" => Effect::Ask(vec![Question::Text {
+                prompt: "Quick task for today's note".into(),
+                default: String::new(),
+            }]),
             "postpone" => {
                 self.postponing = self.target(ctx);
                 if self.postponing.is_none() {
@@ -778,6 +831,16 @@ impl Plugin for Tasks {
         match (id, answers) {
             ("create-or-edit", _) => self.answer_edit(answers, ctx),
             ("postpone", [Answer::Choice(i)]) => self.postpone(*i, ctx),
+            ("quick-task", [Answer::Text(text)]) => {
+                let text = text.trim();
+                if text.is_empty() {
+                    return Effect::None;
+                }
+                Effect::AddToDaily {
+                    heading: DAILY_HEADING.into(),
+                    line: format!("- [ ] {text}"),
+                }
+            }
             _ => Effect::None,
         }
     }

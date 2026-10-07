@@ -520,42 +520,104 @@ fn draw_pane(
     }
 }
 
-/// What to do when no note is open, with the keys those commands have now.
+/// What to do when no note is open, with the keys those commands have now,
+/// and how to move around by keyboard.
 fn draw_empty(buf: &mut Buffer, area: Rect, app: &App, theme: &Theme) {
     let keys = |id: &str| crate::keymap::describe(app.keymap.keys(id));
+    // The first key of each command, joined (`Alt+Left / Alt+Right`).
+    let first = |ids: &[&str]| {
+        ids.iter()
+            .map(|id| crate::keymap::describe(app.keymap.keys(id).get(..1).unwrap_or_default()))
+            .filter(|k| !k.is_empty())
+            .collect::<Vec<_>>()
+            .join(" / ")
+    };
+    let row = |text: &str, key: String| (text.to_string(), key);
     let mut lines = vec![
-        ("No file is open".to_string(), String::new()),
-        (String::new(), String::new()),
-        ("Create new note".to_string(), keys("new-note")),
-        ("Go to file".to_string(), keys("go-to-note")),
-        ("Search the vault".to_string(), keys("search-the-vault")),
-        ("Help".to_string(), keys("help")),
-        ("Quit".to_string(), keys("quit")),
+        row("No file is open", String::new()),
+        row("", String::new()),
+        row("Create new note", keys("new-note")),
+        row("Go to file", keys("go-to-note")),
+        row("Search the vault", keys("search-the-vault")),
+        row("Settings", keys("settings")),
+        row("Help", keys("help")),
+        row("Quit", keys("quit")),
     ];
-    // The plugins' commands that have keys of their own (today's note).
-    let at = lines.len() - 2;
-    lines.splice(at..at, app.keyed_plugin_commands());
+    // The plugins' commands that have keys of their own (today's note),
+    // before Settings, Help and Quit;
+    // with Tasks, a quick task (Ctrl+T, the editor's "make it a task", has
+    // nothing to do here) and the task window, both for today's note.
+    let mut plugin_lines = Vec::new();
+    for (id, name, key) in app.keyed_plugin_commands() {
+        if id == "plugin:tasks:create-or-edit" {
+            plugin_lines.push(row("Add quick task", keys("toggle-task")));
+            plugin_lines.push(row("Add task (task window)", key));
+        } else {
+            plugin_lines.push((name, key));
+        }
+    }
+    let at = lines.len() - 3;
+    lines.splice(at..at, plugin_lines);
+    // Moving around by keyboard (a list's own keys are fixed).
+    let moving = lines.len() + 1;
+    lines.extend([
+        row("", String::new()),
+        row("Moving around", String::new()),
+        row("", String::new()),
+        row("Sidebar / note", keys("focus-sidebar-editor")),
+        row("Next / previous sidebar tab", "Tab / Shift+Tab".into()),
+        row("Choose in the sidebar", "↑↓ Enter".into()),
+        row("Back to the note", "Esc".into()),
+        row(
+            "Previous / next note tab",
+            first(&["previous-tab", "next-tab"]),
+        ),
+        row("Back / forward", first(&["go-back", "go-forward"])),
+        row("Hide / show the sidebar", keys("toggle-sidebar")),
+        row(
+            "Note mode: preview, source, view",
+            keys("cycle-modes-live-preview-source-view"),
+        ),
+        row("All commands", keys("command-palette")),
+    ]);
     let widest = lines
         .iter()
         .map(|(text, key)| text.width() + key.width() + 3)
         .max()
         .unwrap_or_default() as u16;
     let width = widest.max(30).min(area.width);
-    let x = area.x + (area.width - width) / 2;
-    let top = area.y + area.height.saturating_sub(lines.len() as u16) / 3;
-    for (i, (text, key)) in lines.iter().enumerate() {
-        let y = top + i as u16;
-        if y >= area.bottom() {
-            break;
+    // Too short for one column but wide enough for two: side by side,
+    // the moving around section on the right.
+    let (left, right) = lines.split_at(moving - 1);
+    let right = &right[1..];
+    let columns = lines.len() as u16 > area.height && area.width >= 2 * width + 6;
+    // Each section: its rows (text, keys), its column and its title row.
+    type Rows<'a> = &'a [(String, String)];
+    let sections: Vec<(Rows, u16, usize)> = if columns {
+        let x = area.x + (area.width - 2 * width - 6) / 2;
+        vec![(left, x, 0), (right, x + width + 6, 1)]
+    } else {
+        vec![(&lines[..], area.x + (area.width - width) / 2, moving)]
+    };
+    let tallest = sections.iter().map(|(l, ..)| l.len()).max().unwrap_or(0) as u16;
+    let top = area.y + area.height.saturating_sub(tallest) / 3;
+    for (part, x, heading) in sections {
+        for (i, (text, key)) in part.iter().enumerate() {
+            let y = top + i as u16;
+            if y >= area.bottom() {
+                break;
+            }
+            // The first row of each section is its title.
+            let title = i == 0 || (!columns && i == heading);
+            let style = if title {
+                theme.fg(MUTED).add_modifier(Modifier::BOLD)
+            } else {
+                theme.fg(TEXT)
+            };
+            put(buf, x, y, text, width, style);
+            let key_x = x + width.saturating_sub(key.width() as u16);
+            put(buf, key_x, y, key, width, theme.fg(FAINT));
         }
-        let style = if i == 0 {
-            theme.fg(MUTED).add_modifier(Modifier::BOLD)
-        } else {
-            theme.fg(TEXT)
-        };
-        put(buf, x, y, text, width, style);
-        let key_x = x + width.saturating_sub(key.width() as u16);
-        put(buf, key_x, y, key, width, theme.fg(FAINT));
     }
 }
 

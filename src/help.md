@@ -78,7 +78,11 @@ window. This page is read-only; **{close-tab}** closes it.
 - With the Tasks plugin, **Alt+T** (Tasks: Create or edit task) opens a window
   with every field of the task at the cursor (or a new one): ↑↓ field,
   typing edits, ←→ choose, Enter saves; on a date, a calendar beside it
-  (Shift+arrows a day or a week, PgUp/PgDn a month, a click a day).
+  (Shift+arrows a day or a week, PgUp/PgDn a month, a click a day). Its
+  Estimate field writes `[estimate:: 2h]`. With no note open, the window's
+  task goes to today's daily note (under its Tasks heading), and
+  **Ctrl+T** adds a quick task there: just its text (Tasks: Add quick
+  task in the palette, from anywhere).
 - **Ctrl+Z** / **Ctrl+Y** undo and redo (1000 steps). What a command
   did to other notes (a kanban card moved, a task edited from a query, a
   rename with its links, a deleted note) is undone the same way when the

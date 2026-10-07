@@ -82,6 +82,8 @@ Periodic Notes' date parsing, `plugins::moment`.
 | TK-52 | Time estimates (W-135): `[estimate:: 2h]` / `30m` on a task, Dataview's inline field, so the line stays the original's; summed with Dataview (`= sum(this.file.tasks.estimate)`) | ✅ | S | 0.94.0, through Dataview (`workspace::task_estimates_are_summed_by_short_queries`) |
 | TK-53 | Time spent (`[started:: …]`, `[lasted:: …]`, after PlainTasks) | ✗ | M | Not wanted (decided 2026-10-07): estimates and short queries are enough |
 | TK-54 | A statistics line or totals shown under queries | ✗ | S | Not wanted (decided 2026-10-07); `= length(filter(this.file.tasks, (t) => t.completed))` and the like do it in a line |
+| TK-55 | Quick task (blackglass extra): with no note open, Ctrl+T asks for one line and adds `- [ ] text` to today's daily note under its Tasks heading (made from the daily template if it isn't there); the task window works there too | ✅ | S | 0.97.0 (`workspace::with_no_note_open_tasks_go_to_todays_daily_note`) |
+| TK-56 | An Estimate field in the task window (blackglass extra, before Due): `[estimate:: 2h]` after the description, filled in when editing | ✅ | S | 0.97.0 (`workspace::the_task_window_has_an_estimate`) |
 
 ## 5. Suggested order
 
