@@ -1,6 +1,6 @@
 # Version history
 
-Current version: **1.0.1**
+Current version: **1.0.2**
 
 ## Versioning rules
 
@@ -28,6 +28,29 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 1.0.2 (2026-10-08)
+
+### Added
+- **An envelope budget in the example vault** (`Budget/`): envelopes
+  with a monthly amount, a kind and savings goals; a ledger per month
+  (income, filling the envelopes, moving money between them, spending);
+  a report per month (the month in numbers, every envelope's balance
+  with leftovers carried over, where the money went, needs / wants /
+  savings, the biggest payments, overspent envelopes, day by day); a hub
+  with every envelope, the goals and month by month. Dataview queries
+  only, no JavaScript. Templates for a new month and its report, filled
+  in by Ctrl+N in their folders.
+
+### Fixed
+- **Dataview:** a field holding a link (`[spent:: [[Groceries]]]`) is the
+  link (it stopped at the first `]`).
+- **Dataview:** each of a group's `rows` is the whole row, so
+  `filter(rows, (r) => r.l.fill)` sees what `FLATTEN` made, the page's
+  fields and `file`, as in Dataview.
+- **Dataview:** `this` works inside `GROUP BY` queries and their lambdas.
+- **Templater:** JavaScript on a value in a `<% %>` tag
+  (`tp.file.title.slice(-7)`) runs, as in Templater.
 
 ## 1.0.1 (2026-10-07)
 

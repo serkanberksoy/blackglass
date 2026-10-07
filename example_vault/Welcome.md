@@ -52,6 +52,13 @@ or off; all but Git and Recent Files are on in this vault.
 | Encrypt | [[Encrypt]] |
 | Git | [[Git]] |
 
+## A worked example
+
+[[Budget]]: an envelope budget, built from notes and [[Dataview]] queries
+alone. Every bit of income goes into an envelope, spending comes out of
+one, and each month has a report: where the money went, what's left in
+every envelope, overspending, savings goals.
+
 ## What the examples use
 
 `Books/`, `Journal/` (daily notes), `Articles/` and `Zettelkasten/` are notes

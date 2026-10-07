@@ -27,7 +27,7 @@ tenth of a second.
 
 <p align="center"><em>Go to a note by typing part of its name, add a task with an estimate and a date in words, and watch the query results add it up.</em></p>
 
-**Version:** 1.0.1 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
+**Version:** 1.0.2 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
 
 ## Contents
 
@@ -96,6 +96,10 @@ says what each one does.
   network) for charts, stats and templates that ask questions.
 - Results update as you type; click a result to open it or check a task
   off.
+- **A worked example:** an envelope budget with monthly reports (where
+  the money went, what's left in every envelope, savings goals), built
+  from notes and Dataview queries alone (`blackglass --example`, then
+  `Budget`).
 
 <img src="documentation/images/detail-days.png" alt="A project plan by day: tasks, the time planned and what's left" width="560">
 

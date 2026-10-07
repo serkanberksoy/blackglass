@@ -400,7 +400,20 @@ fn inline_fields(text: &str, fields: &mut Vec<(String, Value)>) {
         let mut rest = text;
         while let Some(start) = rest.find(open) {
             let after = &rest[start + 1..];
-            let Some(end) = after.find(close) else { break };
+            // The matching bracket: a link inside (`[[Note]]`) nests.
+            let mut depth = 0usize;
+            let end = after.char_indices().find_map(|(i, c)| {
+                if c == open {
+                    depth += 1;
+                } else if c == close {
+                    if depth == 0 {
+                        return Some(i);
+                    }
+                    depth -= 1;
+                }
+                None
+            });
+            let Some(end) = end else { break };
             if let Some((k, v)) = after[..end].split_once("::")
                 && is_key(k.trim())
             {
@@ -510,7 +523,8 @@ mod tests {
     fn frontmatter_and_inline_fields() {
         let p = page(
             "---\nwaistline: 138\ncategory: Journal\ntags:\n  - daily\n  - log\n---\n\
-             mood:: good\n- rating:: 4\nread [author:: Frank] and (pages:: 412)\n```\nx:: no\n```",
+             mood:: good\n- rating:: 4\nread [author:: Frank] and (pages:: 412)\n\
+             - [spent:: [[Groceries]]] [amount:: 62.4] (shop:: [[Market|the market]])\n```\nx:: no\n```",
         );
         assert_eq!(p.field("waistline"), Some(&Value::Number(138.0)));
         assert_eq!(
@@ -529,6 +543,11 @@ mod tests {
         assert_eq!(p.field("rating"), Some(&Value::Number(4.0)));
         assert_eq!(p.field("author"), Some(&Value::Text("Frank".into())));
         assert_eq!(p.field("pages"), Some(&Value::Number(412.0)));
+        // A link inside a field's brackets: the field runs to the
+        // matching bracket.
+        assert_eq!(p.field("spent"), Some(&Value::Link("Groceries".into())));
+        assert_eq!(p.field("amount"), Some(&Value::Number(62.4)));
+        assert_eq!(p.field("shop"), Some(&Value::Link("Market".into())));
         assert_eq!(p.field("x"), None, "not in code");
         assert_eq!(p.tags, ["#daily", "#log"]);
     }

@@ -335,6 +335,19 @@ pub fn run(query: &Query, index: &Index, this: Option<&Page>) -> Result<Results,
 }
 
 /// A row as a link (a group's rows, listed).
+/// A row as one value (each of a group's `rows`): what FLATTEN bound,
+/// `file`, then the page's fields, as Dataview gives them; a group's
+/// row (a group of groups) is its key.
+fn row_object(row: &Row, index: &Index) -> Value {
+    let Some(page) = row.page else {
+        return row_link(row);
+    };
+    let mut fields: Vec<(String, Value)> = row.vars.iter().rev().cloned().collect();
+    fields.push(("file".into(), file_object(page, index)));
+    fields.extend(page.fields.iter().cloned());
+    Value::Object(fields)
+}
+
 fn row_link(row: &Row) -> Value {
     match row.page {
         Some(p) => Value::Link(p.rel.trim_end_matches(".md").to_string()),
@@ -576,28 +589,7 @@ fn field(path: &[String], scope: Scope) -> Value {
             return rest_of(v.clone(), &path[n..], scope);
         }
     }
-    if let Some(group) = scope.group {
-        if first == "key" || group.name.as_deref() == Some(first) {
-            return rest_of(group.key.clone(), &path[1..], scope);
-        }
-        if first == "rows" {
-            let rest = &path[1..];
-            let mut out = Vec::new();
-            for row in &group.rows {
-                if rest.is_empty() {
-                    out.push(row_link(row));
-                    continue;
-                }
-                match field(rest, Scope::of_row(scope.index, row, scope.this)) {
-                    // Swizzled lists are flattened, as Dataview does.
-                    Value::List(inner) => out.extend(inner),
-                    v => out.push(v),
-                }
-            }
-            return Value::List(out);
-        }
-        return Value::Null;
-    }
+    // The note the query is in: in a group too (Dataview's `this`).
     if first == "this" {
         return match scope.this {
             Some(this) if path.len() > 1 => field(
@@ -613,6 +605,28 @@ fn field(path: &[String], scope: Scope) -> Value {
             Some(this) => Value::Link(this.rel.trim_end_matches(".md").to_string()),
             None => Value::Null,
         };
+    }
+    if let Some(group) = scope.group {
+        if first == "key" || group.name.as_deref() == Some(first) {
+            return rest_of(group.key.clone(), &path[1..], scope);
+        }
+        if first == "rows" {
+            let rest = &path[1..];
+            let mut out = Vec::new();
+            for row in &group.rows {
+                if rest.is_empty() {
+                    out.push(row_object(row, scope.index));
+                    continue;
+                }
+                match field(rest, Scope::of_row(scope.index, row, scope.this)) {
+                    // Swizzled lists are flattened, as Dataview does.
+                    Value::List(inner) => out.extend(inner),
+                    v => out.push(v),
+                }
+            }
+            return Value::List(out);
+        }
+        return Value::Null;
     }
     if let Some(task) = scope.task
         && let Some(v) = task_field(task, scope, path)
@@ -1878,6 +1892,40 @@ mod tests {
             ),
             ["Emma"]
         );
+    }
+
+    #[test]
+    fn a_groups_rows_are_whole_rows() {
+        // Each of `rows` has the row's fields: what FLATTEN made, the
+        // page's own, and `file` (as in Dataview).
+        let ix = rich("dv-group-rows");
+        assert_eq!(
+            list(
+                &ix,
+                "LIST length(filter(rows, (r) => r.tag = \"#reading\")) FROM \"Books\" FLATTEN file.tags AS tag GROUP BY file.folder"
+            ),
+            ["Books: 2"],
+            "Dune's and Emma's #reading rows"
+        );
+        assert_eq!(
+            list(
+                &ix,
+                "LIST map(filter(rows, (r) => r.rating > 4), (r) => r.file.name) FROM \"Books\" GROUP BY file.folder"
+            ),
+            ["Books: Dune"]
+        );
+        // `this` (the note the query is in) inside a group, and inside a
+        // lambda over its rows.
+        let this = ix.pages.iter().find(|p| p.name == "Dune");
+        let Results::List { rows, .. } = run(
+            &parse("LIST this.rating + length(filter(rows, (r) => r.rating = this.rating)) FROM \"Books\" GROUP BY file.folder").unwrap(),
+            &ix,
+            this,
+        )
+        .unwrap() else {
+            panic!("a list")
+        };
+        assert_eq!(rows[0].1, Some(Value::Number(6.0)), "5 + Dune's one row");
     }
 
     #[test]

@@ -3,6 +3,8 @@ templates_folder = "Templates"
 [folder_templates]
 Books = "Book"
 Journal = "Daily"
+"Budget/Months" = "Budget month"
+"Budget/Reports" = "Budget report"
 
 [scripts]
 scripts_folder = "Scripts"

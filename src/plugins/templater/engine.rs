@@ -582,6 +582,9 @@ impl Run<'_> {
             | ["system", "multi_suggester"] => {
                 return Err(format!("{JS}tp.{}", names.join(".")));
             }
+            // Deeper than Templater's own names (`tp.file.title.slice`):
+            // JavaScript on a value.
+            names if names.len() > 2 => return Err(format!("{JS}tp.{}", names.join("."))),
             _ => return Err(format!("unknown tp.{}", names.join("."))),
         })
     }
@@ -1104,6 +1107,11 @@ mod tests {
             out("<% tp.file.nope %>", &[])
                 .unwrap_err()
                 .contains("unknown tp.file.nope")
+        );
+        // JavaScript on a value (`<% %>` is an expression): run as such.
+        assert_eq!(
+            out("<% tp.file.title.slice(-5) %>", &[]).unwrap().text,
+            "08-09"
         );
         assert!(
             out("<% tp.file.title", &[])
