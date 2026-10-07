@@ -146,14 +146,34 @@ terminals, with ASCII symbols where Unicode can't be shown.
 
 ## Installation
 
-### Homebrew (macOS, Linux)
+### macOS (Homebrew)
 
-```bash
-brew install serkanberksoy/tap/blackglass
-```
+1. Install [Homebrew](https://brew.sh) if you don't have it yet:
 
-Homebrew builds it from source, with Rust brought in for the build (a
-few minutes the first time). Then try `blackglass --example`.
+   ```bash
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+   ```
+
+2. Install blackglass:
+
+   ```bash
+   brew install serkanberksoy/tap/blackglass
+   ```
+
+   Homebrew builds it from source, with Rust brought in just for the
+   build, so the first install takes a few minutes. It works on Apple
+   Silicon and Intel Macs.
+
+3. Take the tour, then open your own notes:
+
+   ```bash
+   blackglass --example            # the example vault, at ~/blackglass-example
+   blackglass ~/Notes              # any folder of Markdown files
+   ```
+
+Update with `brew upgrade blackglass`. The same commands work with
+Homebrew on Linux. A terminal with true color looks best: iTerm2,
+WezTerm, kitty or Ghostty (Terminal.app shows 256 colors).
 
 ### Linux (x86_64)
 
