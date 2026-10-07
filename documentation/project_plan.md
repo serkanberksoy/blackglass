@@ -272,6 +272,16 @@ In order:
     - **W-136 sequenced hotkeys:** not now (decided); a leader key and a
       popup of what can follow, if it comes back.
     - **W-115 file recovery** (snapshots with a diff) moved up from M8.
+19. **Queued 2026-10-07, in this order** (decided, not started):
+    - **Importer (W-132, W-138 … W-143):** a plugin with one module per
+      format and a shared HTML → Markdown converter; Evernote and Google
+      Keep first, then HTML / Markdown / text / TextBundle / CSV, Notion,
+      Apple Notes and Bear, OneNote / Word / Excel (sheets as tables),
+      Joplin and Day One, Logseq and Roam
+      (`requirements/importer_requirements.md`).
+    - **Publish (W-116):** notes with `publish: true` as a static site in
+      a folder, with backlinks, tags, search and queries as their
+      results, and a local preview (`requirements/publish_requirements.md`).
 
 ## 2. M1: Workspace ✅
 

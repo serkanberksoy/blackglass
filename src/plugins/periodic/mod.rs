@@ -976,6 +976,18 @@ impl Plugin for PeriodicNotes {
         self.create(&[], ctx)
     }
 
+    fn row_action(&mut self, payload: &str, ctx: &Context) -> Effect {
+        // `day:2026-03-05` (a Dataview calendar's day without notes): its
+        // daily note, asked about first if it isn't there.
+        match payload
+            .strip_prefix("day:")
+            .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+        {
+            Some(day) => self.calendar_open(Period::Daily, day, ctx),
+            None => Effect::None,
+        }
+    }
+
     fn answer(&mut self, id: &str, answers: &[Answer], ctx: &Context) -> Effect {
         match (id, answers) {
             ("switch-calendar-set", [Answer::Choice(i)]) => {

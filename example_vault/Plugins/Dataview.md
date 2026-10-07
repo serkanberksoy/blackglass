@@ -6,7 +6,7 @@ Plugins: **Ctrl+P** → *Open plugins*.
 
 More examples, one subject each: [[Query language]] (grouping,
 flattening, expressions, functions), [[Tasks and lists]] (checking tasks
-off from results), [[Dates and durations]] (and a calendar),
+off from results), [[Time estimates]] (tasks' estimates added up), [[Dates and durations]] (and a calendar),
 [[Inline queries]], and in JavaScript [[Queries]] and [[Dataview extras]].
 
 ## Books by rating

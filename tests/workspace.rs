@@ -8406,3 +8406,151 @@ fn query_blocks_under_the_mouse_keep_clicks_out_of_their_source() {
     assert!(rows.contains("FROM \"Books\""), "{rows}");
     assert_eq!(app.view().unwrap().editor.row, 3);
 }
+
+#[test]
+fn a_dataview_calendars_days_open_their_notes() {
+    let dir = vault(
+        "calendar-click",
+        &[
+            (
+                ".blackglass/plugins.toml",
+                "installed = [\"dataview\"]\nenabled = [\"dataview\"]\n",
+            ),
+            (
+                "Note.md",
+                "top\n\n```dataview\nCALENDAR date\nFROM \"Log\"\n```\n",
+            ),
+            ("Log/Dentist.md", "---\ndate: 2026-03-04\n---\n"),
+            ("Log/Haircut.md", "---\ndate: 2026-03-17\n---\n"),
+            ("Log/Barber.md", "---\ndate: 2026-03-17\n---\n"),
+        ],
+    );
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "Note.md"));
+    let rows = screen(&mut app, 100, 30);
+    // The 4th: one note, opened.
+    let (x, y) = spot(&rows, " 4•");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x + 1, y);
+    assert!(
+        app.view()
+            .unwrap()
+            .path
+            .as_ref()
+            .unwrap()
+            .ends_with("Dentist.md"),
+        "{rows:#?}"
+    );
+    // The 17th: two, so which one?
+    app.open(&note(&app, "Note.md"));
+    let rows = screen(&mut app, 100, 30);
+    let (x, y) = spot(&rows, "17•");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x + 1, y);
+    let rows = screen(&mut app, 100, 30).join("\n");
+    assert!(
+        rows.contains("Barber") && rows.contains("Haircut"),
+        "{rows}"
+    );
+    typing(&mut app, "hair");
+    key(&mut app, KeyCode::Enter);
+    assert!(
+        app.view()
+            .unwrap()
+            .path
+            .as_ref()
+            .unwrap()
+            .ends_with("Haircut.md")
+    );
+    // A day without notes: create one? No, then yes.
+    app.open(&note(&app, "Note.md"));
+    let rows = screen(&mut app, 100, 30);
+    let (x, y) = spot(&rows, " 5 ");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x + 1, y);
+    let rows = screen(&mut app, 100, 30).join("\n");
+    assert!(rows.contains("Create 2026-03-05?"), "{rows}");
+    key(&mut app, KeyCode::Esc);
+    assert!(
+        app.view()
+            .unwrap()
+            .path
+            .as_ref()
+            .unwrap()
+            .ends_with("Note.md")
+    );
+    assert!(!dir.join("Log/2026-03-05.md").exists());
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x + 1, y);
+    key(&mut app, KeyCode::Enter);
+    assert!(
+        app.view()
+            .unwrap()
+            .path
+            .as_ref()
+            .unwrap()
+            .ends_with("2026-03-05.md"),
+        "created and opened"
+    );
+    // Where new notes go: the folder chosen in the explorer.
+    assert!(dir.join("Log/2026-03-05.md").is_file());
+}
+
+#[test]
+fn a_dataview_calendars_empty_day_makes_its_daily_note() {
+    let dir = vault(
+        "calendar-daily",
+        &[
+            (
+                ".blackglass/plugins.toml",
+                "installed = [\"dataview\", \"periodic-notes\"]\nenabled = [\"dataview\", \"periodic-notes\"]\n",
+            ),
+            (
+                ".blackglass/plugins/periodic-notes/settings.toml",
+                "[daily]\nfolder = \"Journal\"\ntemplate = \"Templates/Daily\"\n",
+            ),
+            ("Templates/Daily.md", "# {{date:YYYY-MM-DD}}\n"),
+            (
+                "Note.md",
+                "top\n\n```dataview\nCALENDAR file.day\nFROM \"Journal\"\n```\n",
+            ),
+            ("Journal/2026-03-04.md", "a day"),
+        ],
+    );
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "Note.md"));
+    let rows = screen(&mut app, 100, 30);
+    let (x, y) = spot(&rows, " 9 ");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x + 1, y);
+    let rows = screen(&mut app, 100, 30).join("\n");
+    assert!(rows.contains("Create Journal/2026-03-09.md"), "{rows}");
+    key(&mut app, KeyCode::Enter);
+    let made = dir.join("Journal/2026-03-09.md");
+    assert!(made.is_file(), "the daily note, in its folder");
+    assert_eq!(
+        std::fs::read_to_string(&made).unwrap().trim(),
+        "# 2026-03-09",
+        "from its template"
+    );
+}
+
+/// The keys `documentation/terminals.md` suggests where the terminal keeps
+/// the mouse's side buttons (they're remapped to Alt+← / Alt+→).
+const SIDE_BUTTON_KEYS: &str = "go-back = \"Alt+Left / Ctrl+Alt+Left\"\ngo-forward = \"Alt+Right / Ctrl+Alt+Right\"\nprevious-tab = \"Ctrl+PgUp\"\nnext-tab = \"Ctrl+PgDn\"\n";
+
+#[test]
+fn back_and_forward_can_take_the_side_buttons_keys() {
+    let (mut app, config) = app_with_config("side-button-keys");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(config.join("keys.toml"), SIDE_BUTTON_KEYS).unwrap();
+    app.load_user_config();
+    assert!(app.message.is_empty(), "{}", app.message);
+    let welcome = note(&app, "Welcome.md");
+    let dune = note(&app, "Books/Dune.md");
+    app.open(&welcome);
+    app.open(&dune);
+    alt(&mut app, KeyCode::Left);
+    assert_eq!(active_path(&app), Some(welcome.clone()), "Alt+← goes back");
+    alt(&mut app, KeyCode::Right);
+    assert_eq!(active_path(&app), Some(dune.clone()), "Alt+→ goes forward");
+    // The tabs keep Ctrl+PgUp / Ctrl+PgDn.
+    let before = app.active;
+    press(&mut app, KeyCode::PageUp, KeyModifiers::CONTROL);
+    assert_ne!(app.active, before, "{}", app.message);
+}

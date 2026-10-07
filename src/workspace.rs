@@ -430,6 +430,8 @@ pub struct App {
     rendered: bool,
     /// The file or folder "Move" asked about.
     moving: Option<PathBuf>,
+    /// A calendar's day (`2026-03-05`) whose note "Create it?" asks about.
+    creating_day: Option<String>,
     /// The unsaved text last put in the index: its note and a hash.
     synced: Option<(PathBuf, u64)>,
     /// Watches the vault for changes made elsewhere.
@@ -526,6 +528,7 @@ impl App {
             pending_id: None,
             rendered: false,
             moving: None,
+            creating_day: None,
             synced: None,
             watcher: crate::watch::Watcher::start(&vault_root, crate::watch::INTERVAL),
             session_saved: String::new(),
@@ -2826,6 +2829,21 @@ impl App {
             self.apply_effect(id, "row-action", effect);
             return;
         }
+        // A calendar's day without notes: its daily note (Periodic Notes
+        // asks and uses its template), or a note named after it.
+        if let Some(day) = action.strip_prefix("day:") {
+            if self.plugins.borrow().is_enabled("periodic-notes") {
+                self.row_action(&format!("plugin:periodic-notes:day:{day}"));
+                return;
+            }
+            let question = Question::Choose {
+                prompt: format!("Create {day}?"),
+                items: vec![format!("Create {day}.md"), "Don't create it".into()],
+            };
+            self.creating_day = Some(day.to_string());
+            self.prompt = Some(Prompt::Ask(Ask::new(HOST, "create-day", vec![question])));
+            return;
+        }
         let (line, rel) = if let Some(rel) = action.strip_prefix("open:") {
             (None, rel)
         } else if let Some((n, rel)) = action.strip_prefix("line:").and_then(|r| r.split_once(':'))
@@ -4200,6 +4218,16 @@ impl App {
 
     /// The answers to blackglass's own questions.
     fn host_answer(&mut self, command: &str, answers: &[Answer]) {
+        if command == "create-day" {
+            let day = self.creating_day.take();
+            if let (Some(day), [Answer::Choice(0)]) = (day, answers) {
+                let folder = self.sidebar.target_folder(&self.vault);
+                if let Err(e) = self.create_note_with(&folder, &day, "") {
+                    self.message = e;
+                }
+            }
+            return;
+        }
         if let ("rename-note" | "rename-folder" | "new-folder", [Answer::Text(name)]) =
             (command, answers)
         {

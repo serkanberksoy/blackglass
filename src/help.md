@@ -31,7 +31,8 @@ window. This page is read-only; **{close-tab}** closes it.
 - **{next-tab}** and **{previous-tab}** switch tabs; **{go-to-tab-1}** …
   **{go-to-tab-8}** go to a tab, **{go-to-last-tab}** to the last one.
 - **{go-back}** and **{go-forward}** go back and forward through the notes
-  you were on (the mouse's side buttons too).
+  you were on (the mouse's side buttons too, where the terminal passes
+  them on; Konsole keeps them for its tabs).
 - **{follow-link-under-cursor}** on a `[[link]]` opens it in a new tab. A
   click opens it too. A link to a note that doesn't exist yet offers to
   create it; a web link opens in the browser. **{preview-link-under-cursor}**

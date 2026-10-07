@@ -1,6 +1,6 @@
 # Version history
 
-Current version: **0.95.1**
+Current version: **0.96.5**
 
 ## Versioning rules
 
@@ -26,6 +26,73 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 0.96.5 (2026-10-07)
+
+### Changed
+- `example_vault`: Tasks and lists shows your own task states (`- [M]`):
+  only those with `WHERE status = "M"`, several with `contains(list(…),
+  status)`, and how many tasks each state has.
+
+## 0.96.4 (2026-10-07)
+
+### Changed
+- `documentation/terminals.md`: what works in which terminal. The mouse's
+  side buttons (which terminals report them, why Konsole doesn't, the
+  probe script, and turning them into keys: a `keys.toml` for back /
+  forward on Alt+← / →, checked by
+  `workspace::back_and_forward_can_take_the_side_buttons_keys`), keys
+  terminals keep, selecting text, colors. Linked from the README.
+
+## 0.96.3 (2026-10-07)
+
+### Changed
+- `example_vault`: a project over several days, `Plugins/Dataview/Project
+  plan` (a garden shed: tasks with estimates and planned days, a task
+  list by day), and on Time estimates its days, phases and totals
+  (planned, left, first and last day).
+
+## 0.96.2 (2026-10-07)
+
+### Changed
+- `example_vault`: the time estimates have a page of their own,
+  `Plugins/Dataview/Time estimates` (they were a section of Tasks and
+  lists), linked from Dataview and the welcome page.
+
+## 0.96.1 (2026-10-07)
+
+### Changed
+- **Dataview calendars:** a click on a day without notes asks to create
+  one: with Periodic Notes on, that day's daily note (its folder, name
+  and template); otherwise a note named after the day, in the folder
+  chosen in the file explorer.
+
+## 0.96.0 (2026-10-07)
+
+### Added
+- **Dataview calendars and the mouse (W-42, DV-07):** a click on a day
+  of a `CALENDAR` opens its note; a day with several asks which. Needs
+  mdedit 3.21.0 (`CodeBlockProcessor::render_cells`: actions on parts of
+  a rendered row), which plugins get as `Plugin::render_block_cells`.
+- `Plugins/Dataview/Tasks and lists`: a table of the tasks with their
+  estimates, and one with how many there are, how many are done and
+  their estimates added up.
+
+### Changed
+- The mouse's side buttons: the README and help say which terminals pass
+  them on. Konsole keeps them to switch its own tabs and never sends them
+  to programs, so they can't reach blackglass there.
+
+## 0.95.2 (2026-10-07)
+
+### Changed
+- Queued (requirements only): the Importer (W-132, W-138 … W-143:
+  Evernote, Google Keep, HTML / Markdown / text / TextBundle / CSV,
+  Notion, Apple Notes, Bear, OneNote, Word, Excel, Joplin, Day One,
+  Logseq, Roam) and Publish (W-116: `publish: true` notes as a static
+  site with backlinks, tags, search, rendered queries and a local
+  preview). `requirements/importer_requirements.md`,
+  `requirements/publish_requirements.md`.
 
 ## 0.95.1 (2026-10-07)
 

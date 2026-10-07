@@ -26,7 +26,7 @@ use std::rc::Rc;
 use ratatui::text::Line;
 
 use super::settings::{Kind, Setting, Values};
-use super::{Context, Effect, Manifest, Plugin, PluginCommand};
+use super::{Answer, Context, Effect, Manifest, Plugin, PluginCommand, Question};
 use crate::vault::Vault;
 use index::Index;
 
@@ -36,7 +36,7 @@ const TEMPLATE: &str =
 
 /// Rendered blocks, by query, note and width; cleared when the vault
 /// changes.
-type Cache = HashMap<(String, Option<PathBuf>, usize), Vec<(Line<'static>, Option<String>)>>;
+type Cache = HashMap<(String, Option<PathBuf>, usize), Vec<mdedit::processor::CellRow>>;
 
 #[derive(Default)]
 pub struct Dataview {
@@ -54,6 +54,8 @@ pub struct Dataview {
     /// there, by code.
     here: Option<PathBuf>,
     inline: RefCell<HashMap<InlineKey, Option<String>>>,
+    /// A calendar day's notes, while "which one?" is asked.
+    picking: Vec<String>,
 }
 
 /// An inline query's code and the note it's shown in.
@@ -147,7 +149,33 @@ impl Plugin for Dataview {
         shown
     }
 
+    fn answer(&mut self, _id: &str, answers: &[Answer], _ctx: &Context) -> Effect {
+        let picking = std::mem::take(&mut self.picking);
+        match answers {
+            [Answer::Choice(i)] => picking.get(*i).map_or(Effect::None, |rel| Effect::Open {
+                path: self.root.join(rel),
+            }),
+            _ => Effect::None,
+        }
+    }
+
     fn row_action(&mut self, payload: &str, _ctx: &Context) -> Effect {
+        // `pick:<path>\t<path>…`: a calendar day's notes; which one?
+        if let Some(rels) = payload.strip_prefix("pick:") {
+            self.picking = rels.split('\t').map(String::from).collect();
+            let items = self
+                .picking
+                .iter()
+                .map(|rel| {
+                    let name = rel.rsplit('/').next().unwrap_or(rel);
+                    name.strip_suffix(".md").unwrap_or(name).to_string()
+                })
+                .collect();
+            return Effect::Ask(vec![Question::Choose {
+                prompt: "Open which note?".into(),
+                items,
+            }]);
+        }
         // `toggle:<line>:<path in the vault>`: check a task off, or back.
         let Some((line, rel)) = payload
             .strip_prefix("toggle:")
@@ -328,6 +356,26 @@ impl Plugin for Dataview {
         from: Option<&Path>,
         width: usize,
     ) -> Vec<(Line<'static>, Option<String>)> {
+        // A row's whole-row action (a calendar's days have their own).
+        self.render_block_cells(lang, source, from, width)
+            .into_iter()
+            .map(|(line, parts)| {
+                let whole = parts
+                    .into_iter()
+                    .find(|&(_, to, _)| to == usize::MAX)
+                    .map(|(.., a)| a);
+                (line, whole)
+            })
+            .collect()
+    }
+
+    fn render_block_cells(
+        &self,
+        lang: &str,
+        source: &[String],
+        from: Option<&Path>,
+        width: usize,
+    ) -> Vec<mdedit::processor::CellRow> {
         let text = source.join("\n");
         let key = (
             format!("{lang}\n{text}"),
@@ -339,15 +387,16 @@ impl Plugin for Dataview {
         }
         let this = from.and_then(|p| self.index.page(p));
         let lines = if lang == "dataviewjs" {
-            if self.javascript {
+            let rows = if self.javascript {
                 js::render(&text, &self.index, this, &self.root, width, &self.display)
             } else {
                 no_actions(render::error("JavaScript queries are off in the settings"))
-            }
+            };
+            render::whole_rows(rows)
         } else {
             match query::parse(&text).and_then(|q| eval::run(&q, &self.index, this)) {
-                Ok(results) => render::rows(&results, width, &self.display),
-                Err(e) => no_actions(render::error(&e)),
+                Ok(results) => render::cells(&results, width, &self.display),
+                Err(e) => render::whole_rows(no_actions(render::error(&e))),
             }
         };
         self.cache.borrow_mut().insert(key, lines.clone());

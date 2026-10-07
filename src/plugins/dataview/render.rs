@@ -91,6 +91,25 @@ pub fn results(results: &Results, width: usize, d: &Display) -> Vec<Line<'static
         .collect()
 }
 
+/// Rows with whole-row actions as rows with parts.
+pub fn whole_rows(rows: Vec<(Line<'static>, Option<String>)>) -> Vec<mdedit::processor::CellRow> {
+    rows.into_iter()
+        .map(|(line, action)| {
+            let parts = action.map(|a| vec![(0, usize::MAX, a)]);
+            (line, parts.unwrap_or_default())
+        })
+        .collect()
+}
+
+/// [`rows`] with actions on parts of rows: a calendar's days open their
+/// notes (several: which one is asked).
+pub fn cells(results: &Results, width: usize, d: &Display) -> Vec<mdedit::processor::CellRow> {
+    match results {
+        Results::Calendar(days) if !days.is_empty() => calendar(days),
+        _ => whole_rows(rows(results, width, d)),
+    }
+}
+
 /// [`results`], each line with its action: a page's row opens it, a
 /// task's row opens its note at the task.
 pub fn rows(results: &Results, width: usize, d: &Display) -> Vec<(Line<'static>, Option<String>)> {
@@ -147,7 +166,16 @@ pub fn rows(results: &Results, width: usize, d: &Display) -> Vec<(Line<'static>,
             lines
         }
         Results::Calendar(days) if days.is_empty() => none(nothing(d)),
-        Results::Calendar(days) => calendar(days),
+        Results::Calendar(days) => calendar(days)
+            .into_iter()
+            .map(|(line, parts)| {
+                let whole = parts
+                    .into_iter()
+                    .find(|&(_, to, _)| to == usize::MAX)
+                    .map(|(.., a)| a);
+                (line, whole)
+            })
+            .collect(),
         Results::Table { rows, .. } if rows.is_empty() => none(nothing(d)),
         Results::Table { id, headers, rows } => {
             // The pages' column is named by the settings; a group's by it.
@@ -201,9 +229,7 @@ pub fn rows(results: &Results, width: usize, d: &Display) -> Vec<(Line<'static>,
 
 /// `CALENDAR`: each month with notes as a grid (Monday first), its days
 /// with notes marked, then those notes (a row each, to open).
-fn calendar(
-    days: &[(chrono::NaiveDate, super::eval::PageRef)],
-) -> Vec<(Line<'static>, Option<String>)> {
+fn calendar(days: &[(chrono::NaiveDate, super::eval::PageRef)]) -> Vec<mdedit::processor::CellRow> {
     use chrono::Datelike;
     let mut lines = Vec::new();
     let mut months: Vec<(i32, u32)> = days.iter().map(|(d, _)| (d.year(), d.month())).collect();
@@ -215,30 +241,51 @@ fn calendar(
                 first.format("%B %Y").to_string(),
                 Style::new().add_modifier(Modifier::BOLD),
             )),
-            None,
+            Vec::new(),
         ));
         lines.push((
             Line::from(Span::styled("Mo  Tu  We  Th  Fr  Sa  Su", DIM)),
-            None,
+            Vec::new(),
         ));
         let lead = first.weekday().num_days_from_monday() as usize;
         let mut week: Vec<Span<'static>> = vec![Span::raw("    ".repeat(lead))];
+        // A day with notes opens them (its 3 columns: `17•`).
+        let mut parts = Vec::new();
         let mut day = first;
         while day.month() == month {
+            let notes: Vec<&str> = days
+                .iter()
+                .filter(|(d, p)| *d == day && !p.rel.is_empty())
+                .map(|(_, p)| p.rel.as_str())
+                .collect();
             let has = days.iter().any(|(d, _)| *d == day);
             let cell = format!("{:>2}{} ", day.day(), if has { "•" } else { " " });
+            let col = day.weekday().num_days_from_monday() as usize * 4;
+            match notes.as_slice() {
+                // None: make one (its daily note).
+                [] => parts.push((col, col + 3, format!("day:{day}"))),
+                [rel] => parts.push((col, col + 3, open_action(rel))),
+                many => parts.push((
+                    col,
+                    col + 3,
+                    format!("plugin:dataview:pick:{}", many.join("\t")),
+                )),
+            }
             week.push(if has {
                 Span::styled(cell, LINK.add_modifier(Modifier::BOLD))
             } else {
                 Span::raw(cell)
             });
             if day.weekday() == chrono::Weekday::Sun {
-                lines.push((Line::from(std::mem::take(&mut week)), None));
+                lines.push((
+                    Line::from(std::mem::take(&mut week)),
+                    std::mem::take(&mut parts),
+                ));
             }
             day = day.succ_opt().expect("a next day");
         }
         if !week.is_empty() {
-            lines.push((Line::from(week), None));
+            lines.push((Line::from(week), parts));
         }
         for (d, page) in days
             .iter()
@@ -249,7 +296,11 @@ fn calendar(
                     Span::styled(format!("  {} ", d.format("%d")), DIM),
                     Span::styled(page.name.clone(), LINK),
                 ]),
-                (!page.rel.is_empty()).then(|| open_action(&page.rel)),
+                if page.rel.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![(0, usize::MAX, open_action(&page.rel))]
+                },
             ));
         }
     }

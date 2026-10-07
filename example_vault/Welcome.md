@@ -35,7 +35,7 @@ or off; all but Git and Recent Files are on in this vault.
 
 | Plugin | Page |
 |--------|------|
-| Dataview | [[Dataview]] (and [[Query language]], [[Tasks and lists]], [[Dates and durations]], [[Inline queries]]) |
+| Dataview | [[Dataview]] (and [[Query language]], [[Tasks and lists]], [[Time estimates]], [[Project plan]], [[Dates and durations]], [[Inline queries]]) |
 | DataviewJS | [[DataviewJS]] ([[Queries]], [[Charts]], [[Dataview extras]]) |
 | Templater | [[Templater]] |
 | Periodic Notes | [[Periodic Notes]] |

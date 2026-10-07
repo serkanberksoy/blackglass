@@ -642,6 +642,24 @@ pub trait Plugin {
             .map(|l| (l, None))
             .collect()
     }
+
+    /// [`Plugin::render_block_rows`]'s lines with actions on parts of
+    /// them (see [`CodeBlockProcessor::render_cells`]: a calendar's days).
+    fn render_block_cells(
+        &self,
+        lang: &str,
+        source: &[String],
+        from: Option<&Path>,
+        width: usize,
+    ) -> Vec<mdedit::processor::CellRow> {
+        self.render_block_rows(lang, source, from, width)
+            .into_iter()
+            .map(|(line, action)| {
+                let parts = action.map(|a| vec![(0, usize::MAX, a)]);
+                (line, parts.unwrap_or_default())
+            })
+            .collect()
+    }
 }
 
 /// `/pattern/flags` as a regular expression (flags: `i` any case, `m`
@@ -1270,6 +1288,31 @@ impl CodeBlockProcessor for Blocks {
         plugins
             .renderer(lang)
             .map(|p| p.render_block_rows(lang, source, from, width))
+            .unwrap_or_default()
+    }
+
+    fn render_cells(
+        &self,
+        lang: &str,
+        source: &[String],
+        from: Option<&Path>,
+        width: usize,
+    ) -> Vec<mdedit::processor::CellRow> {
+        let plugins = self.0.borrow();
+        if lang == crate::query_embed::LANGUAGE {
+            return plugins
+                .queries
+                .render(source, from, width)
+                .into_iter()
+                .map(|(line, action)| {
+                    let parts = action.map(|a| vec![(0, usize::MAX, a)]);
+                    (line, parts.unwrap_or_default())
+                })
+                .collect();
+        }
+        plugins
+            .renderer(lang)
+            .map(|p| p.render_block_cells(lang, source, from, width))
             .unwrap_or_default()
     }
 }

@@ -50,7 +50,7 @@ blackglass --help               # all options and keys
 one, **Ctrl+G** searches the vault, **Ctrl+B** moves between the sidebar and
 the editor, **Ctrl+Q** quits.
 
-**Version:** 0.95.1 · **Stage:** M1 (workspace) and M2 (commands & plugins) complete; M3 (vault features, Zettelkasten) nearly · [Version history](VERSION.md)
+**Version:** 0.96.5 · **Stage:** M1 (workspace) and M2 (commands & plugins) complete; M3 (vault features, Zettelkasten) nearly · [Version history](VERSION.md)
 
 ```
  Files  Search  Tags           │ 2026-08-08 ×  2026-08-09 ×  +
@@ -86,7 +86,10 @@ cargo install --path .             # or into ~/.cargo/bin
 
 It runs in any terminal on Linux and macOS (Windows terminals should work
 but aren't tested); a terminal with true color and a Nerd Font or other
-Unicode font looks best, and plain ASCII works too. Optional programs it
+Unicode font looks best, and plain ASCII works too. Some terminals keep
+keys or mouse buttons for themselves (Konsole keeps the mouse's side
+buttons): see [documentation/terminals.md](documentation/terminals.md)
+for what works where, and how to work around it. Optional programs it
 uses when they're there:
 
 | Program | For |
@@ -98,7 +101,7 @@ uses when they're there:
 
 ## Features
 
-123 of 137 tracked features are done (`requirements/features.md`).
+123 of 143 tracked features are done (`requirements/features.md`).
 
 | Area | What you get |
 |------|--------------|
@@ -163,7 +166,7 @@ images and query results can be clicked. blackglass gets each key first:
 | Ctrl+X | With text selected: extract it to a new note: the new-note window opens (Tab: from a template); the text moves there and a link to it replaces it; you stay on the new note |
 | Alt+Left/Right, Ctrl+PgUp / Ctrl+PgDn | Previous / next tab |
 | Alt+1 / Alt+9 | First tab … last tab ("Go to tab 1" … "Go to last tab") |
-| Ctrl+Alt+Left/Right | Back / forward through the notes you were on (also the mouse's back / forward buttons) |
+| Ctrl+Alt+Left/Right | Back / forward through the notes you were on (also the mouse's back / forward buttons, where the terminal passes them on: kitty, WezTerm, foot, xterm; Konsole keeps them to switch its own tabs; see `documentation/terminals.md`) |
 | Ctrl+B | Move the focus to the next open pane: the sidebar, the calendar (if shown), the note, the backlinks (if shown) |
 | Alt+B | Hide / show the sidebar |
 | Alt+V | Cycle the note's mode: live preview → source → view (read-only; Tab to a link or a query result, Enter or a click follows it, Esc edits) |

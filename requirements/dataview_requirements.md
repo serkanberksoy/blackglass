@@ -18,7 +18,7 @@ in `src/plugins/dataview/` and `tests/workspace.rs`.
 | DV-04 | `LIST WITHOUT ID` (values only) | ✅ | `eval::sources_of_the_current_note_and_without_id` |
 | DV-05 | `TASK` grouped by page | ✅ | |
 | DV-06 | `TASK` rows can be checked off from the result | ✅ | `workspace::dataview_tasks_are_checked_off_from_results`: Enter or a click toggles the task in its note (with ✅ date when completion tracking is on); a setting opens the task instead |
-| DV-07 | `CALENDAR date-field`: a month grid with a dot per page | ✅ | `eval::calendars_put_pages_on_their_days`, `render::a_calendar_month`: each month with a `•` on days, and the day's notes below (clickable) |
+| DV-07 | `CALENDAR date-field`: a month grid with a dot per page | ✅ | `eval::calendars_put_pages_on_their_days`, `render::a_calendar_month`: each month with a `•` on days, and the day's notes below (clickable); 0.96.0: a click on a day opens its note, or asks which of its notes (`workspace::a_dataview_calendars_days_open_their_notes`, mdedit 3.21.0's `render_cells`); 0.96.1: a day without notes asks to create one: its daily note with Periodic Notes on (folder, name, template), else a note named after the day in the explorer's folder (`workspace::a_dataview_calendars_empty_day_makes_its_daily_note`) |
 
 ## 2. Data commands
 

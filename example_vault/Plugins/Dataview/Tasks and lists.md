@@ -54,30 +54,35 @@ FROM "Plugins/Dataview/Tasks and lists"
 FLATTEN file.lists AS l
 ```
 
-## Time estimates
+## Your own task states
 
-Give a task an estimate as a field: `[estimate:: 2h]`, `[estimate:: 30m]`,
-`[estimate:: 1.5h]` or `[estimate:: 1h 15m]`. It's read as a duration, so
-it adds up.
+Any character between a task's brackets is its state, and `status` is
+that character: here `[M]` marks what to bring up at the next meeting.
 
-- [ ] Draft the outline [estimate:: 2h]
-- [ ] Write the first chapter [estimate:: 1.5h]
-- [x] Find a title [estimate:: 30m]
-- [ ] Read it aloud [estimate:: 45m]
+- [x] Ask about the new printer
+- [x] Holiday dates for December
+- [/] Write the quarterly report
+- [?] Who orders the coffee?
+- [ ] Book the meeting room
 
-Left in this note: `= sum(filter(this.file.tasks, (t) => !t.completed).estimate)`
-
-Everything in this note: `= sum(this.file.tasks.estimate)`
-
-Tasks done in this note (all of them, not only these): `= length(filter(this.file.tasks, (t) => t.completed))` of `= length(this.file.tasks)`.
-
-For a whole folder, what's left (put the folder in place of the note's
-path):
+Only the `[M]` tasks:
 
 ```dataview
-TABLE WITHOUT ID sum(rows.t.estimate) AS "Left to do"
+TASK
+FROM "Plugins/Dataview/Tasks and lists"
+WHERE status = "M"
+```
+
+How many tasks each state has (a space is an open task):
+
+```dataview
+TABLE WITHOUT ID key AS State, length(rows) AS Tasks
 FROM "Plugins/Dataview/Tasks and lists"
 FLATTEN file.tasks AS t
-WHERE !t.completed AND t.estimate
-GROUP BY true
+GROUP BY t.status
 ```
+
+Several states at once: `WHERE contains(list("M", "?"), status)`. Only
+`[x]` counts as done (`completed`); any other state is `checked`.
+
+Time estimates on tasks, added up: [[Time estimates]].
