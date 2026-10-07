@@ -42,7 +42,7 @@ blackglass                      # choose a vault: a recent one, or any folder (a
 blackglass .                    # the current folder as the vault
 blackglass ~/Notes              # open a vault
 blackglass ~/Notes/Journal/today.md   # open a note in its vault
-blackglass example_vault        # try the example vault
+blackglass example_vault        # try the example vault (start at Welcome)
 blackglass --help               # all options and keys
 ```
 
@@ -50,7 +50,7 @@ blackglass --help               # all options and keys
 one, **Ctrl+G** searches the vault, **Ctrl+B** moves between the sidebar and
 the editor, **Ctrl+Q** quits.
 
-**Version:** 0.89.0 · **Stage:** M1 (workspace) and M2 (commands & plugins) complete; M3 (vault features, Zettelkasten) nearly · [Version history](VERSION.md)
+**Version:** 0.95.1 · **Stage:** M1 (workspace) and M2 (commands & plugins) complete; M3 (vault features, Zettelkasten) nearly · [Version history](VERSION.md)
 
 ```
  Files  Search  Tags           │ 2026-08-08 ×  2026-08-09 ×  +
@@ -98,7 +98,7 @@ uses when they're there:
 
 ## Features
 
-119 of 131 tracked features are done (`requirements/features.md`).
+123 of 137 tracked features are done (`requirements/features.md`).
 
 | Area | What you get |
 |------|--------------|
@@ -108,7 +108,7 @@ uses when they're there:
 | Editor | Everything mdedit does: live preview, tables, callouts, tasks, images, footnotes, `%%comments%%`, search and replace, undo, folding, emoji; notes, sections and blocks (`![[Note#^id]]`) embedded from anywhere in the vault |
 | Link autocomplete | Type `[[`: the 5 latest notes, then a fuzzy search as you type; ↑/↓ and Enter or Tab insert `[[Note]]` |
 | Highlight colors | `==🔴text==` in red, orange, yellow, green, blue or purple (the emoji hidden); typing `==` suggests a color; "Highlight in …" colors the selection or the highlight at the cursor |
-| Dates in words | Type `@today`, `@tomorrow`, `@next friday`, `@in 3 days`, `@oct 20`: Enter puts in a link to that day (Shift+Enter keeps the words as its alias); the selection to a date, the current date and time, a date picker; format and trigger in Settings → Dates (`example_vault/Examples/Dates.md`) |
+| Dates in words | Type `@today`, `@tomorrow`, `@next friday`, `@in 3 days`, `@oct 20`: Enter puts in a link to that day (Shift+Enter keeps the words as its alias); the selection to a date, the current date and time, a date picker; format and trigger in Settings → Dates (`example_vault/Guide/Dates in words.md`) |
 | Links | `[[Note]]` is found anywhere in the vault (the nearest, shortest path wins); Ctrl+Enter or a click opens it in a tab (a missing note is offered to be made); web links open in the browser; embeds and images too; a link to a note that doesn't exist yet is dimmed |
 | Quick switcher | Fuzzy search by name or `aliases`, recent notes first, and "Create" for a new name |
 | Vault search | Every note, smart case, name matches first; opens at the match and F3 finds the next one. Several words all match; `"a phrase"`, `-word` (not), `OR`, `( )`; `tag:name`, `file:`, `path:`, `line:(a b)`, `task:`, `task-todo:`, `task-done:`, `[property]`, `[property:value]` |
@@ -118,21 +118,23 @@ uses when they're there:
 | Properties | Shown typed in the note (checkboxes, dates, lists as chips, tags); Alt+; edits them in a window (their types from their values); the frontmatter's properties: "Show properties" lists them with their note counts (Enter searches), "Rename property" renames one in every note; `aliases` find notes in the quick switcher and `[[` suggestions (`[[Note\|Alias]]`) |
 | Backlinks | Alt+L shows (and hides) the note's links under it: the notes linking to it with their lines, the notes naming it without a link (`l` makes the link), and its outgoing links (missing ones marked); Enter or a click opens |
 | Outline and random note | Alt+O lists the note's headings to jump to; "Footnotes" lists its footnotes; "Open random note" in the palette |
+| Undo | Ctrl+Z / Ctrl+Y (or Ctrl+Shift+Z) undo and redo, 1000 steps in a note; changes made to other notes (a kanban card moved, a task edited from a query, a rename with its links, a deleted note) are undone the same way when the open note has nothing of its own to undo, or with "Undo last change to other notes" |
 | Notes | New notes in the selected folder (`Untitled`, `Untitled 1` …), with a unique ID if you like (Settings → Notes: in the name, as the name or in the properties; any time format, `YYYYMMDDHHmm`, `YYYY-MM` …); Save As anywhere in the vault; rename (F2) and move any note, file (an image, a PDF) or folder, chosen in the file explorer or open, with every link to it updated, delete (to the vault's `.trash/`); new and renamed folders; unsaved changes are asked about |
 | Help | F1 or Ctrl+H: a built-in help page with every command and its keys as they are now |
 | Settings | Alt+, : one window, a search box and the pages on the left (Options: Editor, Notes, Keyboard shortcuts, Plugins; Plugin options: each plugin's settings), the page on the right with each setting, what it does and its value; typing searches every page; saved in `~/.config/blackglass/` (plugins' in the vault) |
 | Command palette | Ctrl+P: every command in one list to filter and run: the workspace's, the editor's (save, undo, find, source mode …), inserts (hyperlink, wiki link, callout, table, code block, date …) and the plugins'; every action is a command, so every one can have keys (Settings → Keyboard shortcuts), none by default for most |
 | Plugins | Install, uninstall, enable and disable them on the settings' Plugins page ("Open plugins"); they add commands, render their own code blocks, and have settings pages (→ or ⚙ on the Plugins page, or "*Plugin*: Settings" in the palette) |
 | Dataview plugin | ```` ```dataview ```` blocks run `LIST`, `TABLE`, `TASK` and `CALENDAR` queries with `FROM` (folders, tags, links), `WHERE`, `SORT`, `LIMIT`, `GROUP BY` and `FLATTEN` over frontmatter, `key:: value` fields, tags, links, tasks, list items and `file.*`, with durations, lambdas and Dataview's functions; inline queries (`` `= expr` ``); tasks checked off from results; results follow edits as you type. The result shows in the note, the query when the cursor is in it |
-| JavaScript | A sandboxed engine (pure Rust, no files or network): ```` ```dataviewjs ```` blocks with Dataview's `dv` API, and Templater's `<%* %>` commands. Charts, stats, tables and a link graph drawn in JavaScript: `example_vault/JavaScript/` |
+| JavaScript | A sandboxed engine (pure Rust, no files or network): ```` ```dataviewjs ```` blocks with Dataview's `dv` API, and Templater's `<%* %>` commands. Charts, stats, tables and a link graph drawn in JavaScript: `example_vault/Plugins/DataviewJS/` |
 | Templater plugin | All of Templater: templates in `Templates/` with `tp.date`, `tp.file` (title, include, cursors, `create_new`, `move`, `rename` …), `tp.frontmatter`, `tp.system` questions (prompts of one or more lines, choices of one or many), `tp.web` (a daily quote, a random picture, web requests, fetched in the background), `tp.config`, `tp.hooks`, and `tp.user` (your scripts, and system commands if you turn them on); JavaScript in `<%* %>`. Insert one (Alt+E), apply one to the open note, create a note from one, run the commands in a note, or at startup; folder and file regex templates fill new notes; "Jump to next cursor location"; `<% %>` tags shown as written (`example_vault/Templates/Templater tour.md`) |
 | Git plugin | Backs the vault up to Git: commit-and-sync (commit, pull, push) from the palette or every N minutes, a pull on start, a commit message template; runs your own `git` in the background, and notes a pull changed are shown again; the branch and what's waiting in the status bar; a Git tab in the sidebar lists the changes (`s` stage, `d` discard, `c` commit); a note's diff and the history open in read-only tabs; the open note's changed lines marked in a margin (`+`, `~`, `-`), or who wrote each line; settings for a tree of changes, squashing before a push, side-by-side diffs |
-| Advanced Tables plugin | In a table Tab / Shift+Tab / Enter move between cells and line it up; commands insert, delete, move, align and sort rows and columns, transpose, export CSV, and evaluate `<!-- TBLFM: … -->` formulas (the formula line hidden unless the cursor is on it) (`example_vault/Examples/Tables.md`); a Table tab in the sidebar with the operations |
-| Bases plugin | Database views of your notes: ```` ```base ```` blocks and `.base` files filter notes by their properties, compute formulas, and show them as a table (grouped, with summaries), a list, cards or a kanban board (the original's, from its 1.14: `groupOrder`, a None column; keys move cards between columns, which writes the note's property, and move columns; new notes in a column; colored columns and cards: `example_vault/Examples/Kanban.md`); a filter pane above the results (Alt+F; Alt+M sizes it): rows of property (suggested as you type), operator and value, the results updating as you type; switch, sort, group, filter and search views from the palette, embed a base or one of its views (`![[Library.base#Cards]]`), click a row to change its properties, copy or export a view, a new note from a view (`example_vault/Examples/Library.base`) |
-| Tasks plugin | Due, scheduled and start dates, priorities, recurrence and dependencies on tasks; ```` ```tasks ```` blocks filter, sort and group every task in the vault (a click checks one off); toggling writes done dates and a recurring task's next occurrence; create and edit tasks in a window with every field (Alt+T; dates typed or picked on a calendar), postpone them (in a note or from a query's results) (`example_vault/Examples/Tasks.md`); fields suggested as you type, `show tree`, `columns by`, regex filters |
-| Task Archiver plugin | Done tasks move under an Archived heading (in the note, another note or today's daily note), in a date tree of list items if you like, with the date and their headings; delete done tasks, archive the heading under the cursor, sort a list (items, open, done), check a task off and archive it; rules send some tasks elsewhere or delete them (`example_vault/Examples/Task Archiver.md`) |
-| Emoji Shortcodes plugin | Type `:` and a shortcode (`:jo`): emoji suggested, recently used first; Enter puts in the emoji (or keeps the shortcode); `:heart:` in the text shows as ❤️ (`example_vault/Examples/Emoji.md`) |
-| Mermaid plugin | ```` ```mermaid ```` blocks drawn as text: flowcharts as a tree of their links (subgraphs listed), sequence diagrams with lifelines and arrows, pie charts as bars, Gantt charts as a timeline (`example_vault/Examples/Diagrams.md`) |
+| Advanced Tables plugin | In a table Tab / Shift+Tab / Enter move between cells and line it up; commands insert, delete, move, align and sort rows and columns, transpose, export CSV, and work out `<!-- TBLFM: … -->` formulas, by themselves when the table changes (or by command; the formula line hidden unless the cursor is on it); spreadsheet cells: `=B2*C2`, `=SUM(D2:D4)` show their results (`example_vault/Plugins/Advanced Tables.md`); a Table tab in the sidebar with the operations |
+| Bases plugin | Database views of your notes: ```` ```base ```` blocks and `.base` files filter notes by their properties, compute formulas, and show them as a table (grouped, with summaries), a list, cards or a kanban board (the original's, from its 1.14: `groupOrder`, a None column; keys move cards between columns, which writes the note's property, and move columns; new notes in a column; colored columns and cards: `example_vault/Plugins/Bases/Kanban.md`); a filter pane above the results (Alt+F; Alt+M sizes it): rows of property (suggested as you type), operator and value, the results updating as you type; switch, sort, group, filter and search views from the palette, embed a base or one of its views (`![[Library.base#Cards]]`), click a row to change its properties, copy or export a view, a new note from a view (`example_vault/Plugins/Bases/Library.base`) |
+| Tasks plugin | Due, scheduled and start dates, priorities, recurrence and dependencies on tasks; ```` ```tasks ```` blocks filter, sort and group every task in the vault (a click checks one off); toggling writes done dates and a recurring task's next occurrence; create and edit tasks in a window with every field (Alt+T; dates typed or picked on a calendar), postpone them (in a note or from a query's results) (`example_vault/Plugins/Tasks.md`); fields suggested as you type, `show tree`, `columns by`, regex filters |
+| Task Archiver plugin | Done tasks move under an Archived heading (in the note, another note or today's daily note), in a date tree of list items if you like, with the date and their headings; delete done tasks, archive the heading under the cursor, sort a list (items, open, done), check a task off and archive it; rules send some tasks elsewhere or delete them (`example_vault/Plugins/Task Archiver.md`) |
+| Emoji Shortcodes plugin | Type `:` and a shortcode (`:jo`): emoji suggested, recently used first; Enter puts in the emoji (or keeps the shortcode); `:heart:` in the text shows as ❤️ (`example_vault/Plugins/Emoji Shortcodes.md`) |
+| Encrypt plugin | "Encrypt selection": a password (twice) and a hint, the text replaced by encrypted text shown as 🔐 and the hint; "Decrypt" at the cursor shows it (copy, or decrypt in place); Meld Encrypt's format; passwords remembered while running, never saved (`example_vault/Plugins/Encrypt.md`) |
+| Mermaid plugin | ```` ```mermaid ```` blocks drawn as text: flowcharts as a tree of their links (subgraphs listed), sequence diagrams with lifelines and arrows, pie charts as bars, Gantt charts as a timeline (`example_vault/Plugins/Mermaid.md`) |
 | Recent Files plugin | A Recent tab after Files, Search and Tags: the last 25 notes you visited (or changed), newest first (Enter opens one, `l` links it at the cursor, Delete takes it off; "Clear list" in the palette); paths and tags can be left out, titles shown; kept per vault; not installed by default |
 | Bookmarks plugin | Bookmark the note, the heading above the cursor, the folder chosen in the explorer or the search; a Bookmarks tab opens them, `r` renames, Delete removes; renamed notes keep theirs |
 | Zettelkasten plugin | Links to headings and blocks (`[[Note#`, `[[Note#^`, `[[##`, `[[^^`; block ids added), copied links, new unique notes linked from here; Folgezettel sequences (sequel and branch notes, a Sequence tab), breadcrumbs from `up` / `down` / `next` / `prev`, titles shown instead of IDs; extract to another note, extract a heading, split and merge notes; orphans, dead ends, unresolved links, a Links tab, link counts, quick capture (`example_vault/Zettelkasten/`) |
@@ -220,7 +222,8 @@ The layout: `src/workspace.rs` (the app: tabs, keys, effects), `src/ui/`
 (drawing), `src/vault/` (the vault's index), `src/plugins/<name>/` (one
 folder per plugin), `tests/` (the workspace driven by keys and checked
 on a drawn screen), `vendor/crossterm` (patched for the mouse's side
-buttons), `example_vault/` (a vault to try everything on).
+buttons), `example_vault/` (a vault to try everything on: `Welcome.md` leads to a
+guide page per feature in `Guide/` and a page per plugin in `Plugins/`).
 
 ## License
 

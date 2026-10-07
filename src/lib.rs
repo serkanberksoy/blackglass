@@ -16,6 +16,7 @@ pub mod cli;
 pub mod commands;
 pub mod config;
 pub mod highlights;
+pub mod journal;
 pub mod keymap;
 pub mod link_suggest;
 pub mod nldates;

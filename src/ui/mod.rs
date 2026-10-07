@@ -75,6 +75,7 @@ pub fn draw_launcher(
 pub fn draw(frame: &mut Frame, app: &mut App) {
     let caps = app.shared.config.apply(app.shared.caps);
     let theme = Theme::new(caps, app.palette);
+    theme::set_unicode(caps.unicode);
     app.areas = Areas::default();
     app.refresh_plugin_tabs();
     let [main, status] =

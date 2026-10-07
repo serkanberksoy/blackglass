@@ -1,6 +1,6 @@
 # Version history
 
-Current version: **0.89.0**
+Current version: **0.95.1**
 
 ## Versioning rules
 
@@ -26,6 +26,131 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 0.95.1 (2026-10-07)
+
+### Changed
+- **W-134 Encrypt** is complete with selections: whole-note encryption
+  (`.mdenc` files) was dropped from the plan.
+
+## 0.95.0 (2026-10-07)
+
+### Added
+- **W-137 Query blocks and the mouse:** the rendered block the mouse is
+  over (a `dataview`, `tasks`, `query` or `base` block, or any a plugin
+  draws) is framed in the accent color with a `</>` button that shows its
+  query. A click on a result's link follows it, on a task checks it, and
+  anywhere else in the block does nothing: the query no longer opens
+  for editing on a click. The arrow keys still go into it. Needs mdedit
+  3.20.0 (`EditorView::hover`).
+
+### Changed
+- Mouse moves draw the screen again only when the block under the mouse
+  changes (every move drew it before).
+
+## 0.94.0 (2026-10-07)
+
+### Added
+- **W-135 Task time estimates:** a task's `[estimate:: 2h]` adds up with
+  Dataview: `= sum(this.file.tasks.estimate)` for a note, a short
+  `dataview` block for a folder (examples in
+  `Plugins/Dataview/Tasks and lists`). Nothing else is shown (decided).
+
+### Fixed
+- **Dataview:** a field's value like `2h`, `1.5h` or `4hr 15min` is a
+  duration, as Dataview types it (it was text, so sums of estimates came
+  out 0).
+
+## 0.93.0 (2026-10-07)
+
+### Added
+- **W-134 Encrypt (plugin, the first part):** "Encrypt selection" asks
+  for a password (twice), a hint and whether the 🔐 marker shows when
+  reading, and puts encrypted text in the selection's place; "Decrypt"
+  with the cursor on it shows the hint, asks for the password and shows
+  the text (Copy, Decrypt in place, Close). Written in Meld Encrypt's
+  format (AES-256-GCM, PBKDF2-SHA-512), so that plugin reads it, and its
+  older texts are read too. Passwords can be remembered while blackglass
+  runs (for the note, its folder or the vault, for some minutes), never
+  saved. Encrypted text shows as 🔐 and its hint. Whole-note `.mdenc`
+  files are next (`requirements/encrypt_requirements.md`).
+- Plugins can ask for passwords (`FormField::secret`, shown as dots),
+  show a text with buttons (`Question::Show`), see where the selection is
+  (`ActiveNote::selected`), and choose symbols by the terminal
+  (`theme::glyph`).
+- `example_vault/Plugins/Encrypt.md`.
+
+## 0.92.1 (2026-10-07)
+
+### Fixed
+- **Advanced Tables' cell formulas:** a cell starting with `==` (a
+  highlight, `==🟡someday==`) is no longer worked out as a formula and
+  shown as `#ERR`.
+
+### Changed
+- `example_vault/`: a `Formatting/` folder, one page per kind of
+  formatting (headings and sections, text styles, lists and tasks, quotes
+  and callouts, code blocks, tables, footnotes and comments), linked from
+  the welcome page and Writing; the Emoji Shortcodes page lists the 20
+  most used shortcodes.
+
+## 0.92.0 (2026-10-07)
+
+### Added
+- **W-133 Undo changes to other notes:** what a command does to files
+  (a kanban card moved, a task edited or postponed from a query's
+  results, a property set from a base, a note renamed or moved with every
+  link to it, a property renamed everywhere, a note deleted, a mention
+  linked) is recorded as the files before and after. Ctrl+Z undoes it
+  (Ctrl+Y or Ctrl+Shift+Z redoes) when the open note has nothing of its
+  own to undo (a `.base` page, view mode); "Undo last change to other
+  notes" and "Redo last change to other notes" do it from anywhere. A file
+  changed again since isn't overwritten; 100 changes are kept.
+
+## 0.91.0 (2026-10-07)
+
+### Added
+- **Spreadsheet cells** (W-92, AT-44): with Advanced Tables, a table cell
+  starting with `=` is a formula (`=B2*C2`, `=SUM(D2:D4)`,
+  `=ROUND(AVERAGE(B2:B9), 2)`, `=IF(A2>3, "high", "low")`), shown as its
+  result in the live preview and view mode and as written while the
+  cursor is in the table; references as in the Table Calc plugin (A1 is
+  the header's first cell). Functions: SUM, AVERAGE, MEDIAN, MIN, MAX,
+  COUNT, COUNTA, PRODUCT, ABS, ROUND, FLOOR, CEILING, TRUNC, INT, SQRT,
+  POWER, MOD, IF; errors show as `#ERR` or `#NAME?`. A setting turns it
+  off. Plugins can show a table's cells their own way
+  (`Plugin::table_cells`, mdedit 3.18.0's `markdown::set_table_cells`).
+
+## 0.90.0 (2026-10-07)
+
+### Added
+- **Table formulas work themselves out** (W-92, AT-39): with Advanced
+  Tables, a table's `<!-- TBLFM: … -->` formulas are worked out whenever
+  the table changes (Tab, Enter, a table command) and when the cursor
+  leaves it (a value typed, then moving away); no command needed.
+  Settings → Advanced Tables → Recalculate formulas: automatically (the
+  default) or on command. The files stay the original's TBLFM format.
+
+### Changed
+- **1000 undo steps** by default (was 5), from mdedit 3.17.0; Settings →
+  Editor → Undo steps still sets it.
+
+## 0.89.1 (2026-10-07)
+
+### Changed
+- **The example vault, organized:** `Welcome.md` leads to a guide page
+  for each part of the workspace in `Guide/` (Workspace, Writing, Links
+  and embeds, Search and tags, Properties, Notes and files, Dates in
+  words) and a page for every plugin in `Plugins/` (new: Templater,
+  Periodic Notes, Bases, Bookmarks, Recent Files, Git, Zettelkasten,
+  Citations, DataviewJS); the examples moved there from `Examples/`,
+  `JavaScript/` and `Dataview/`. Citations has more sources, a literature
+  note template and a walkthrough. The imported Evernote and Google Keep
+  notes are gone; importing those exports is planned (W-132).
+
+### Fixed
+- Dataview: a code span with only `=` is code, not an empty inline
+  query with an error.
 
 ## 0.89.0 (2026-10-06)
 

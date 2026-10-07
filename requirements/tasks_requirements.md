@@ -79,6 +79,9 @@ Periodic Notes' date parsing, `plugins::moment`.
 | TK-46 | `filter by function`, `sort by function`, `group by function` (JavaScript) | 🟡 | M | The JavaScript sandbox exists (W-54); a `task` object for it |
 | TK-47 | `view columns by …` (a kanban of tasks) | ✅ | M | 0.66.0: `columns by <field>`: one column per group, side by side |
 | TK-48 | Toggle a task from a result (Enter, a click) and the line in its note changes; edit and postpone buttons on each result | 🟡 | M | 0.50.0: a click or Enter toggles (in the note, open or not); no edit / postpone buttons; Dataview's DV-06 too: one "write a task's line" function for both |
+| TK-52 | Time estimates (W-135): `[estimate:: 2h]` / `30m` on a task, Dataview's inline field, so the line stays the original's; summed with Dataview (`= sum(this.file.tasks.estimate)`) | ✅ | S | 0.94.0, through Dataview (`workspace::task_estimates_are_summed_by_short_queries`) |
+| TK-53 | Time spent (`[started:: …]`, `[lasted:: …]`, after PlainTasks) | ✗ | M | Not wanted (decided 2026-10-07): estimates and short queries are enough |
+| TK-54 | A statistics line or totals shown under queries | ✗ | S | Not wanted (decided 2026-10-07); `= length(filter(this.file.tasks, (t) => t.completed))` and the like do it in a line |
 
 ## 5. Suggested order
 

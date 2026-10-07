@@ -43,7 +43,7 @@ to mdedit first.
 | obsidian-charts / obsidian-tracker | Text charts (bars, sparklines) from a block's YAML or from note fields |
 | obsidian-mind-map | A note's headings and lists drawn as a tree |
 | quickadd | Capture and template choices on top of Templater; macros (JavaScript) not |
-| meld-encrypt | Encrypt a note or selection with a password (AES-GCM); reading notes Meld encrypted needs its exact format |
+| meld-encrypt | Requested 2026-10-07 (W-134): encrypt a note or selection with a password (AES-GCM); reading notes Meld encrypted needs its exact format |
 | colored-tags | A color per tag; needs a tag-style hook in mdedit (or mdedit's own R-12) |
 | guitar-chord | Chord diagrams drawn in text from a chord database |
 

@@ -7246,7 +7246,7 @@ fn dataview_inline_queries_show_their_values() {
         &[
             (
                 "Note.md",
-                "top\nName: `= this.file.name`, double: `= [[Other]].rating * 2`, js: `$= dv.current().file.name.length`\nend\nop: `==`",
+                "top\nName: `= this.file.name`, double: `= [[Other]].rating * 2`, js: `$= dv.current().file.name.length`\nend\nop: `==` and `=`",
             ),
             ("Other.md", "rating:: 4"),
         ],
@@ -7258,8 +7258,8 @@ fn dataview_inline_queries_show_their_values() {
         "{rows:#?}"
     );
     assert!(
-        find(&rows, "op: ==").is_some() && !rows.iter().any(|r| r.contains('⚠')),
-        "`==` is code, not a query: {rows:#?}"
+        find(&rows, "op: == and =").is_some() && !rows.iter().any(|r| r.contains('⚠')),
+        "`==` and `=` are code, not queries: {rows:#?}"
     );
     // On the line being edited, as written.
     key(&mut app, KeyCode::Down);
@@ -7989,4 +7989,420 @@ fn task_dates_are_chosen_on_a_calendar() {
         "{}",
         app.message
     );
+}
+
+/// The cells of a table line, trimmed.
+fn cells(line: &str) -> Vec<String> {
+    line.trim()
+        .trim_matches('|')
+        .split('|')
+        .map(|c| c.trim().to_string())
+        .collect()
+}
+
+fn formula_vault(name: &str, settings: &str) -> App {
+    let dir = vault(
+        name,
+        &[
+            (
+                "T.md",
+                "| item | qty | price | total |\n|---|---|---|---|\n| a | 2 | 3 | |\n| b | 1 | 5 | |\n<!-- TBLFM: $4=$2*$3 -->\nend",
+            ),
+            (
+                ".blackglass/plugins.toml",
+                "installed = [\"tables\"]\nenabled = [\"tables\"]\n",
+            ),
+            (".blackglass/plugins/tables/settings.toml", settings),
+        ],
+    );
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "T.md"));
+    app
+}
+
+#[test]
+fn table_formulas_recalculate_by_themselves() {
+    let mut app = formula_vault("tables-auto-formulas", "");
+    // Tab in the table: lined up, and the formulas worked out.
+    put_cursor(&mut app, 2, 3);
+    key(&mut app, KeyCode::Tab);
+    assert_eq!(cells(&lines(&app)[2])[3], "6", "{:?}", lines(&app));
+    assert_eq!(cells(&lines(&app)[3])[3], "5");
+    // A value typed, then the cursor leaves the table: worked out again.
+    put_cursor(&mut app, 3, 0);
+    key(&mut app, KeyCode::End);
+    let qty = lines(&app)[3].find("| 1").unwrap() + 3;
+    put_cursor(&mut app, 3, qty);
+    typing(&mut app, "0");
+    assert_eq!(cells(&lines(&app)[3])[1], "10");
+    app.tick();
+    put_cursor(&mut app, 5, 0);
+    app.tick();
+    assert_eq!(cells(&lines(&app)[3])[3], "50", "{:?}", lines(&app));
+    assert_eq!(
+        (
+            app.view().unwrap().editor.row,
+            app.view().unwrap().editor.col
+        ),
+        (5, 0),
+        "the cursor stays"
+    );
+}
+
+#[test]
+fn table_formulas_can_wait_for_their_command() {
+    let mut app = formula_vault("tables-command-formulas", "formulas = \"on command\"\n");
+    put_cursor(&mut app, 2, 3);
+    key(&mut app, KeyCode::Tab);
+    assert_eq!(cells(&lines(&app)[2])[3], "");
+    run_palette(&mut app, "evaluate table formulas");
+    assert_eq!(cells(&lines(&app)[2])[3], "6");
+}
+
+#[test]
+fn table_cells_starting_with_equals_show_their_results() {
+    let dir = vault(
+        "tables-cell-formulas",
+        &[
+            (
+                "T.md",
+                "top\n| item | qty | price | total |\n|---|---|---|---|\n| a | 2 | 1.5 | =B2*C2 |\n| b | 3 | 2 | =B3*C3 |\n| all | =SUM(B2:B3) | | =SUM(D2:D3) |\nend",
+            ),
+            (
+                ".blackglass/plugins.toml",
+                "installed = [\"tables\"]\nenabled = [\"tables\"]\n",
+            ),
+        ],
+    );
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "T.md"));
+    let rows = screen(&mut app, 100, 20).join("\n");
+    assert!(
+        rows.contains("│ 3 ") && rows.contains("│ 9 ") && !rows.contains("=SUM"),
+        "results: {rows}"
+    );
+    // In the table: the formulas, to edit.
+    put_cursor(&mut app, 3, 0);
+    let rows = screen(&mut app, 100, 20).join("\n");
+    assert!(rows.contains("=B2*C2"), "{rows}");
+    // Turned off in the settings: as written.
+    let settings = dir.join(".blackglass/plugins/tables/settings.toml");
+    fs::create_dir_all(settings.parent().unwrap()).unwrap();
+    fs::write(&settings, "cell_formulas = \"false\"\n").unwrap();
+    app.rescan();
+    put_cursor(&mut app, 0, 0);
+    let rows = screen(&mut app, 100, 20).join("\n");
+    assert!(rows.contains("=SUM"), "{rows}");
+}
+
+#[test]
+fn changes_to_other_notes_are_undone_and_redone() {
+    let dir = vault("undo-other-notes", BOARD);
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    let pond = dir.join("Projects/Pond.md");
+    // A card moved on a board (the page has nothing of its own to undo).
+    app.open(&note(&app, "Projects.base"));
+    key(&mut app, KeyCode::Right);
+    press(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+    assert!(fs::read_to_string(&pond).unwrap().contains("status: Done"));
+    ctrl(&mut app, 'z');
+    let text = fs::read_to_string(&pond).unwrap();
+    assert!(text.contains("status: Doing"), "{text}\n{}", app.message);
+    assert!(app.message.contains("Undid"), "{}", app.message);
+    ctrl(&mut app, 'y');
+    assert!(fs::read_to_string(&pond).unwrap().contains("status: Done"));
+    // A rename, with the links to it: undone from the palette.
+    app.open(&note(&app, "Projects/Shed.md"));
+    key(&mut app, KeyCode::F(2));
+    ctrl(&mut app, 'u');
+    typing(&mut app, "Barn");
+    key(&mut app, KeyCode::Enter);
+    assert!(dir.join("Projects/Barn.md").is_file(), "{}", app.message);
+    run_palette(&mut app, "undo last change to other notes");
+    assert!(
+        dir.join("Projects/Shed.md").is_file() && !dir.join("Projects/Barn.md").exists(),
+        "{}",
+        app.message
+    );
+    // A file changed again since: not undone over it.
+    run_palette(&mut app, "redo last change to other notes");
+    assert!(dir.join("Projects/Barn.md").is_file());
+    fs::write(
+        dir.join("Projects/Barn.md"),
+        "---\nstatus: Doing\n---\nchanged since\n",
+    )
+    .unwrap();
+    run_palette(&mut app, "undo last change to other notes");
+    assert!(app.message.contains("changed since"), "{}", app.message);
+    assert!(dir.join("Projects/Barn.md").is_file());
+}
+
+fn encrypt_app(name: &str, settings: &str, text: &str) -> App {
+    let dir = vault(
+        name,
+        &[
+            ("Note.md", text),
+            (
+                ".blackglass/plugins.toml",
+                "installed = [\"encrypt\"]\nenabled = [\"encrypt\"]\n",
+            ),
+            (".blackglass/plugins/encrypt/settings.toml", settings),
+        ],
+    );
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "Note.md"));
+    app
+}
+
+/// Runs the palette's best match for `name`.
+fn palette(app: &mut App, name: &str) {
+    ctrl(app, 'p');
+    typing(app, name);
+    key(app, KeyCode::Enter);
+}
+
+fn note_line(app: &App, row: usize) -> String {
+    app.view().unwrap().editor.lines[row].clone()
+}
+
+#[test]
+fn a_selection_is_encrypted_and_decrypted_with_a_password() {
+    let mut app = encrypt_app("encrypt", "", "My PIN is 1234 ok\n\nend");
+    for _ in 0.."My PIN is ".len() {
+        key(&mut app, KeyCode::Right);
+    }
+    for _ in 0..4 {
+        press(&mut app, KeyCode::Right, KeyModifiers::SHIFT);
+    }
+    palette(&mut app, "encrypt selection");
+    let rows = screen(&mut app, 100, 24).join("\n");
+    for field in ["Password", "Confirm", "Hint", "When reading"] {
+        assert!(rows.contains(field), "{field}: {rows}");
+    }
+    typing(&mut app, "s3cret");
+    key(&mut app, KeyCode::Tab);
+    typing(&mut app, "s3cret");
+    key(&mut app, KeyCode::Tab);
+    typing(&mut app, "four digits");
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(!rows.contains("s3cret"), "passwords aren't shown: {rows}");
+    assert!(rows.contains("••••••"), "{rows}");
+    key(&mut app, KeyCode::Enter);
+    let encrypted = note_line(&app, 0);
+    assert!(
+        encrypted.starts_with("My PIN is 🔐β 💡four digits💡") && encrypted.ends_with(" 🔐 ok"),
+        "{encrypted}"
+    );
+    assert!(!encrypted.contains("1234"));
+    // Shown as its marker and hint where the cursor isn't.
+    key(&mut app, KeyCode::Down);
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(rows.contains("My PIN is 🔐 four digits ok"), "{rows}");
+    // Decrypt at the cursor: the password is remembered.
+    key(&mut app, KeyCode::Up);
+    palette(&mut app, "decrypt");
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(
+        rows.contains("1234") && rows.contains("Decrypt in place"),
+        "{rows}"
+    );
+    key(&mut app, KeyCode::Right);
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(note_line(&app, 0), "My PIN is 1234 ok");
+    // Passwords that differ aren't taken.
+    for _ in 0..4 {
+        press(&mut app, KeyCode::Left, KeyModifiers::SHIFT);
+    }
+    palette(&mut app, "encrypt selection");
+    press(&mut app, KeyCode::Char('u'), KeyModifiers::CONTROL);
+    typing(&mut app, "one");
+    key(&mut app, KeyCode::Tab);
+    press(&mut app, KeyCode::Char('u'), KeyModifiers::CONTROL);
+    typing(&mut app, "two");
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(note_line(&app, 0), "My PIN is 1234 ok");
+    assert!(
+        screen(&mut app, 100, 24)
+            .join("\n")
+            .contains("the passwords don't match"),
+    );
+}
+
+#[test]
+fn meld_encrypts_text_is_decrypted_with_its_hint() {
+    // Written by Meld Encrypt's own code.
+    let meld = "%%🔐β 💡the usual💡AmAJFj9S7yAiBnXjg5YsQeiWCe1Loe4RrrpM3FAj+AuJDdvpWo7ZYoCcoHr+Arvp7fBGz6qXsPajsihE1ZrDI/Rzjunv8ajIlwGxUw== 🔐%%";
+    let mut app = encrypt_app(
+        "encrypt-meld",
+        "remember_password = \"off\"\n",
+        &format!("Key: {meld}\n\nend"),
+    );
+    for _ in 0..8 {
+        key(&mut app, KeyCode::Right);
+    }
+    palette(&mut app, "decrypt");
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(rows.contains("the usual"), "the hint: {rows}");
+    typing(&mut app, "wrong");
+    key(&mut app, KeyCode::Enter);
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(rows.contains("Wrong password"), "{rows}");
+    palette(&mut app, "decrypt");
+    typing(&mut app, "pässword");
+    key(&mut app, KeyCode::Enter);
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(
+        rows.contains("Ünïcode secret") && rows.contains("second line"),
+        "{rows}"
+    );
+    // Close leaves it encrypted.
+    key(&mut app, KeyCode::Esc);
+    assert!(note_line(&app, 0).starts_with("Key: %%🔐β"));
+    // Not remembered: asked again.
+    palette(&mut app, "decrypt");
+    assert!(matches!(app.prompt, Some(Prompt::Ask(_))));
+    // Not inside encrypted text.
+    key(&mut app, KeyCode::Esc);
+    palette(&mut app, "encrypt selection");
+    assert!(app.prompt.is_none());
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(rows.contains("on encrypted text"), "{rows}");
+    // Nothing selected and no encrypted text at the cursor: the text is
+    // typed in the window.
+    while app.view().unwrap().editor.row == 0 {
+        key(&mut app, KeyCode::Down);
+    }
+    palette(&mut app, "encrypt selection");
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(rows.contains("Text"), "{rows}");
+    typing(&mut app, "typed secret");
+    for pw in ["pw", "pw"] {
+        key(&mut app, KeyCode::Tab);
+        typing(&mut app, pw);
+    }
+    key(&mut app, KeyCode::Enter);
+    assert!(
+        note_line(&app, 1).starts_with("🔐β "),
+        "{}",
+        note_line(&app, 1)
+    );
+}
+
+#[test]
+fn task_estimates_are_summed_by_short_queries() {
+    let dir = vault(
+        "estimates",
+        &[
+            (
+                ".blackglass/plugins.toml",
+                "installed = [\"dataview\"]\nenabled = [\"dataview\"]\n",
+            ),
+            (
+                "Work/Sprint.md",
+                "- [ ] one [estimate:: 2h]\n- [ ] two [estimate:: 1.5h]\n- [x] three [estimate:: 30m]\n- [ ] four\n\nLeft: `= sum(filter(this.file.tasks, (t) => !t.completed).estimate)`\nAll: `= sum(this.file.tasks.estimate)`\n\n```dataview\nTABLE WITHOUT ID sum(rows.t.estimate) AS Folder\nFROM \"Work\"\nFLATTEN file.tasks AS t\nWHERE !t.completed\nGROUP BY true\n```\n",
+            ),
+            ("Work/Other.md", "- [ ] other [estimate:: 4hr 15min]\n"),
+        ],
+    );
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "Work/Sprint.md"));
+    let rows = screen(&mut app, 100, 30).join("\n");
+    assert!(rows.contains("Left: 3 hours, 30 minutes"), "{rows}");
+    assert!(rows.contains("All: 4 hours"), "{rows}");
+    assert!(rows.contains("7 hours, 45 minutes"), "the folder: {rows}");
+}
+
+fn mouse(app: &mut App, kind: MouseEventKind, x: u16, y: u16) -> Action {
+    app.handle_mouse(MouseEvent {
+        kind,
+        column: x,
+        row: y,
+        modifiers: KeyModifiers::NONE,
+    })
+}
+
+/// Where `text` is on the screen: (column, row).
+fn spot(rows: &[String], text: &str) -> (u16, u16) {
+    rows.iter()
+        .enumerate()
+        .find_map(|(y, r)| {
+            let i = r.find(text)?;
+            Some((r[..i].chars().count() as u16, y as u16))
+        })
+        .unwrap_or_else(|| panic!("{text}: {rows:#?}"))
+}
+
+#[test]
+fn query_blocks_under_the_mouse_keep_clicks_out_of_their_source() {
+    let dir = vault(
+        "query-mouse",
+        &[
+            (
+                ".blackglass/plugins.toml",
+                "installed = [\"dataview\"]\nenabled = [\"dataview\"]\n",
+            ),
+            (
+                "Note.md",
+                "top\n\n```dataview\nLIST\nFROM \"Books\"\n```\n\nend",
+            ),
+            ("Books/Dune.md", "spice"),
+        ],
+    );
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "Note.md"));
+    let rows = screen(&mut app, 100, 24);
+    assert!(!rows.join("\n").contains("</>"), "{rows:#?}");
+    // The mouse over the block: a button for its source.
+    let (x, y) = spot(&rows, "╰─");
+    assert!(app.mouse_moved(MouseEvent {
+        kind: MouseEventKind::Moved,
+        column: x + 2,
+        row: y,
+        modifiers: KeyModifiers::NONE,
+    }));
+    assert!(
+        !app.mouse_moved(MouseEvent {
+            kind: MouseEventKind::Moved,
+            column: x + 3,
+            row: y,
+            modifiers: KeyModifiers::NONE,
+        }),
+        "the same block: no need to draw"
+    );
+    let rows = screen(&mut app, 100, 24);
+    assert!(rows.join("\n").contains("</>"), "{rows:#?}");
+    // A click in the block but not on a result: the source stays hidden.
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x + 2, y);
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(!rows.contains("FROM"), "{rows}");
+    assert_eq!(app.view().unwrap().editor.row, 0);
+    // A click on a result's link follows it.
+    let rows = screen(&mut app, 100, 24);
+    let (x, y) = spot(&rows, "Dune");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x + 1, y);
+    assert!(
+        app.view()
+            .unwrap()
+            .path
+            .as_ref()
+            .unwrap()
+            .ends_with("Dune.md"),
+        "the link"
+    );
+    app.open(&note(&app, "Note.md"));
+    // The button: the source.
+    let rows = screen(&mut app, 100, 24);
+    let (x, y) = spot(&rows, "╰─");
+    app.mouse_moved(MouseEvent {
+        kind: MouseEventKind::Moved,
+        column: x + 2,
+        row: y,
+        modifiers: KeyModifiers::NONE,
+    });
+    let rows = screen(&mut app, 100, 24);
+    let (x, y) = spot(&rows, "</>");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x + 1, y);
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(rows.contains("FROM \"Books\""), "{rows}");
+    assert_eq!(app.view().unwrap().editor.row, 3);
 }

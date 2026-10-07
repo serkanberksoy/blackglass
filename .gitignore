@@ -12,3 +12,6 @@
 
 # Your session in the example vault (blackglass writes it)
 /example_vault/.blackglass/workspace.json
+
+# The notes you visited in the example vault (the Recent Files plugin)
+/example_vault/.blackglass/plugins/recent-files/recent.toml

@@ -160,6 +160,26 @@ thread_local! {
     static CURRENT: std::cell::Cell<Option<Palette>> = const { std::cell::Cell::new(None) };
 }
 
+thread_local! {
+    /// Whether the terminal shows Unicode symbols, for [`glyph`].
+    static UNICODE: std::cell::Cell<bool> = const { std::cell::Cell::new(true) };
+}
+
+/// Sets what [`glyph`] chooses by (each frame, from the terminal).
+pub fn set_unicode(unicode: bool) {
+    UNICODE.with(|u| u.set(unicode));
+}
+
+/// `unicode`, or `ascii` where the terminal can't show it, for what draws
+/// without a [`Theme`] at hand (a plugin's rendered text).
+pub fn glyph(unicode: &'static str, ascii: &'static str) -> &'static str {
+    if UNICODE.with(std::cell::Cell::get) {
+        unicode
+    } else {
+        ascii
+    }
+}
+
 /// Uses `palette` for [`current`].
 pub fn set_current(palette: Palette) {
     CURRENT.with(|c| c.set(Some(palette)));

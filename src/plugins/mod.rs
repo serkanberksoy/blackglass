@@ -11,6 +11,7 @@ pub mod bookmarks;
 pub mod citations;
 pub mod dataview;
 pub mod emoji;
+pub mod encrypt;
 pub mod git;
 pub mod js;
 pub mod mermaid;
@@ -280,6 +281,13 @@ pub enum Question {
         title: String,
         fields: Vec<FormField>,
     },
+    /// A text to read (several lines), with buttons under it: ←→ / Tab
+    /// choose one, Enter takes it ([`Answer::Choice`]), Esc closes.
+    Show {
+        title: String,
+        text: String,
+        buttons: Vec<String>,
+    },
 }
 
 /// A field of a [`Question::Form`].
@@ -310,6 +318,15 @@ impl FormField {
         }
     }
 
+    /// A password: typed, shown as dots (answered as [`Answer::Text`]).
+    pub fn secret(label: &str, help: &str, value: &str) -> Self {
+        FormField {
+            label: label.into(),
+            help: help.into(),
+            value: FieldValue::Secret(value.into()),
+        }
+    }
+
     pub fn choice(label: &str, help: &str, items: Vec<String>, chosen: usize) -> Self {
         FormField {
             label: label.into(),
@@ -326,6 +343,8 @@ pub enum FieldValue {
     Choice(Vec<String>, usize),
     /// A date as typed (answered as [`Answer::Text`]).
     Date(String),
+    /// A password, shown as dots (answered as [`Answer::Text`]).
+    Secret(String),
 }
 
 impl FieldValue {
@@ -373,6 +392,8 @@ pub struct ActiveNote<'a> {
     pub path: Option<&'a Path>,
     pub text: &'a str,
     pub selection: Option<&'a str>,
+    /// Where the selection is: its start and end (line, char column).
+    pub selected: Option<((usize, usize), (usize, usize))>,
     /// The cursor's line, and its column (in chars).
     pub row: usize,
     pub col: usize,
@@ -441,6 +462,14 @@ pub trait Plugin {
     /// `<!-- TBLFM:` formula lines).
     fn hidden_lines(&self) -> Vec<&'static str> {
         Vec::new()
+    }
+
+    /// A table's lines to show instead of `lines` (its second the
+    /// separator), as many: computed cells (Advanced Tables' `=SUM(…)`);
+    /// `None`: as written. Asked while drawing, while the cursor isn't in
+    /// the table.
+    fn table_cells(&self, _lines: &[String]) -> Option<Vec<String>> {
+        None
     }
 
     /// What a span between `open` and its closing marker shows (`inner` is
@@ -653,6 +682,7 @@ pub fn catalog() -> Vec<Box<dyn Plugin>> {
         Box::new(citations::Citations::new()),
         Box::new(archiver::Archiver::new()),
         Box::new(emoji::EmojiShortcodes::new()),
+        Box::new(encrypt::Encrypt::new()),
     ]
 }
 
@@ -1047,6 +1077,14 @@ impl Plugins {
             .iter()
             .filter(|e| e.enabled)
             .find_map(|e| e.plugin.link_badge(target))
+    }
+
+    /// The first enabled plugin's lines for a table ([`Plugin::table_cells`]).
+    pub fn table_cells(&self, lines: &[String]) -> Option<Vec<String>> {
+        self.entries
+            .iter()
+            .filter(|e| e.enabled)
+            .find_map(|e| e.plugin.table_cells(lines))
     }
 
     /// How the lines the enabled plugins hide start.

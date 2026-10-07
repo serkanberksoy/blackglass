@@ -78,13 +78,20 @@ window. This page is read-only; **{close-tab}** closes it.
   with every field of the task at the cursor (or a new one): ↑↓ field,
   typing edits, ←→ choose, Enter saves; on a date, a calendar beside it
   (Shift+arrows a day or a week, PgUp/PgDn a month, a click a day).
+- **Ctrl+Z** / **Ctrl+Y** undo and redo (1000 steps). What a command
+  did to other notes (a kanban card moved, a task edited from a query, a
+  rename with its links, a deleted note) is undone the same way when the
+  open note has nothing of its own to undo, or with **{undo-last-change-to-other-notes}**.
 - Dates in words: type `@` and a date (`@today`, `@tomorrow`, `@next
   friday`, `@in 3 days`, `@oct 20`, `@time` for times): Enter puts in a
   link to that day's note, Shift+Enter keeps your words as its alias.
   **{date-picker}** asks for one; **{parse-natural-language-date}** turns
   the selection into one. Format, trigger and links: the settings' Dates
   page.
-- A click in the text puts the cursor there.
+- A click in the text puts the cursor there. In a query's results (a
+  `dataview`, `tasks`, `query` or `base` block) a click follows a link or
+  checks a task, and the query stays as it is; with the mouse over the
+  block, its **</>** button (or the arrow keys) shows the query.
 - The open tabs and folders come back the next time you open the vault,
   and notes changed by another program (a sync tool, Git) are picked up;
   a note with unsaved changes here is kept, with a warning.
@@ -128,7 +135,8 @@ switches between live preview, source mode (every line raw) and view mode
   breadcrumbs, titles instead of IDs; extract, split and merge notes;
   orphans, the Links tab, link counts, quick capture), Citations (a
   BibTeX / Zotero bibliography: **Citations: Insert citation**, literature
-  notes),
+  notes), Encrypt (**Encrypt: Encrypt selection** with a password and a
+  hint, **Encrypt: Decrypt** at the cursor),
   Mermaid (```` ```mermaid ```` diagrams drawn as text), Git (the vault
   backed up and synced: **Git: Commit-and-sync**, on a timer too; a Git
   tab in the sidebar with the changes, **Git: Show the diff of this note**,

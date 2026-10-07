@@ -1,7 +1,7 @@
 # Dashboard
 
 Task lists in callouts, and the notes that aren't connected yet. The
-tasks come from every note (try `Examples/Tasks.md`).
+tasks come from every note (try `Plugins/Tasks.md`).
 
 ## Tasks
 >[!danger] Tasks Within Two Weeks

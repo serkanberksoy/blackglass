@@ -71,6 +71,8 @@ cells.
 | AT-36 | Nesting (`sum(@3..@4)+@3$1`), chaining with `::` and several TBLFM lines | ✅ | S | 0.49.0 |
 | AT-37 | Errors shown in the status bar, the table unchanged | ✅ | S | 0.49.0 |
 | AT-38 | The TBLFM comment line hidden in the live preview (shown while editing it) | ✅ | S | 0.88.0: mdedit 3.16.0's hidden lines (`markdown::set_hidden_lines`); the cursor still moves onto it; `workspace::a_tables_formula_line_hides_until_the_cursor_is_on_it` |
+| AT-39 | Formulas worked out by themselves: when the table changes (Tab, Enter, a table command) and when the cursor leaves it; or only by command (a setting) | ✅ | S | 0.90.0, beyond the original (which works them out by command only), after org-mode's automatic rows; `workspace::table_formulas_recalculate_by_themselves`, `workspace::table_formulas_can_wait_for_their_command` |
+| AT-44 | Spreadsheet cells: a cell starting with `=` (`=B2*C2`, `=SUM(D2:D4)`, `=IF(A2>3, "high", "low")`) shows its result in the live preview and view mode, the formula while the cursor is in the table; A1 is the header's first cell (as the Table Calc plugin); SUM, AVERAGE, MEDIAN, MIN, MAX, COUNT, COUNTA, PRODUCT, ABS, ROUND, FLOOR, CEILING, TRUNC, INT, SQRT, POWER, MOD, IF; `#ERR`, `#NAME?` | ✅ | M | 0.91.0, beyond the original (after Table Calc, CalcCraft): mdedit 3.18.0's table cells; the file keeps the formulas; `tables::cells::tests`, `workspace::table_cells_starting_with_equals_show_their_results` |
 
 ## 5. Commands and controls
 

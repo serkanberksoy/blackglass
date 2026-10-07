@@ -99,7 +99,7 @@ find and replace, undo, selection, emoji, soft wrap. What's left:
 | File recovery | ⬜ | – | Not tracked. Snapshots of notes every few minutes; the Git plugin (queue 11) covers it for Git users |
 | Footnotes view | ⬜ | – | Needs footnotes first (mdedit X-04 …) |
 | Format converter | ⬜ | – | Not tracked; low value |
-| Graph view | 🟡 | – | No graph view; a DataviewJS link graph is in `example_vault/JavaScript/`. A local graph as text (a note, its links and backlinks as a tree) would fit |
+| Graph view | 🟡 | – | No graph view; a DataviewJS link graph is in `example_vault/Plugins/DataviewJS/`. A local graph as text (a note, its links and backlinks as a tree) would fit |
 | Note composer | 🟡 | W-60: extract a selection to a new note (Ctrl+X) | Merging two notes missing |
 | Outgoing links | ⬜ | – | Not tracked; the backlinks pane (W-25) could show both directions |
 | Outline | ⬜ | W-26 | The headings of the note, to jump to |
@@ -173,7 +173,7 @@ find and replace, undo, selection, emoji, soft wrap. What's left:
 | Files changed elsewhere noticed (watching) | ⬜ | W-29 | F5 scans again |
 | Index kept current | 🟡 | W-05 | Saves update it; changes made elsewhere need F5 |
 | Attachments: paste or drop an image into a note, attachment folder setting | ⬜ | – | Not tracked; pasting an image from the clipboard (wl-paste) into an attachments folder would work |
-| Import from other apps (Notion, Evernote …) | 🟡 | – | The example vault has converted notes; no importer |
+| Import from other apps (Notion, Evernote …) | ⬜ | – | No importer yet; Evernote and Google Keep exports are planned (W-132) |
 | Other file types shown in the explorer (PDF, images) | 🟡 | – | Listed; opened outside |
 
 ## 7. Workspace and interface

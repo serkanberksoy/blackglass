@@ -190,6 +190,11 @@ cargo test --test project            # versions, feature ↔ test mapping, --hel
 - A plugin can ask with a form (`Question::Form`: every field shown
   with its default, text or choice; answered as one `Answer::Fields`),
   the Tasks window's way (Alt+T).
+- Changes to other notes are undoable (`journal::Files`): every write,
+  move or delete of a file calls `App::journal.touch(path)` first, inside
+  a recording (`apply_effect`, `apply_moves`, `delete_note`,
+  `rename_property`, `link_mention` begin and end one). Ctrl+Z / Ctrl+Y
+  reach it when the note has nothing of its own (`editor_key`).
 - New notes the user makes go through `App::create_new_note`, which gives
   them a note ID when the vault's Notes settings ask for one
   (`note_ids`, `.blackglass/notes.toml`); only notes with names of their
@@ -234,6 +239,7 @@ cargo test --test project            # versions, feature ↔ test mapping, --hel
   badge links and render spans in the live preview (`link_badge`,
   `rendered_spans` / `render_span`, through mdedit's `set_link_badge` /
   `set_rendered`, set in `App::template_tags`), hide lines but at the
-  cursor (`hidden_lines`, mdedit's `set_hidden_lines`); delete a note and point
+  cursor (`hidden_lines`, mdedit's `set_hidden_lines`), show a table's
+  cells their own way (`table_cells`, mdedit's `set_table_cells`); delete a note and point
   links elsewhere (`Effect::DeleteNote`, `Effect::Retarget`). A note a
   plugin makes (`Effect::CreateFile`) runs its Templater commands.

@@ -1,2 +1,5 @@
 bibliography = "refs.bib"
 folder = "Reading notes"
+note_title = "@{{citekey}}"
+template = "Templates/Literature note"
+cite_format = "[@{{citekey}}]"

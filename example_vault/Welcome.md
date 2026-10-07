@@ -1,25 +1,62 @@
 # Welcome to blackglass
 
-This folder is an example **vault**: a folder of Markdown notes, with the
-file explorer, search and tags on the left and your notes in tabs. Try:
+This folder is an example **vault**: a folder of Markdown notes. The file
+explorer, search and tags are on the left, your notes in tabs on the right.
+Every page below shows one thing with something to try.
 
-- **Ctrl+Q** quits (it asks first if a note has unsaved changes)
-- **Ctrl+O** to go to a note by name, e.g. type `dune`
-- **Ctrl+G** to search the whole vault, or `tag:reading` for a tag
-- **Ctrl+Enter** on a link to open it in a new tab: [[Dune]], [[2026-08-09]]
-- **Ctrl+B** to move between the panes: the sidebar (left), the note
-  (right), and the calendar and backlinks when they're open;
-  **Esc** in the sidebar goes back to the note, **Alt+B** hides the sidebar
-- **Ctrl+N** for a new note (in its window, **Tab** picks a template),
-  **Ctrl+W** to close a tab
-- **Ctrl+X** with text selected moves it to a new note and links to it
-- **Alt+L** for the notes that link here (backlinks), **Alt+D** for
-  today's note,
-  **Alt+C** for the calendar, **Alt+V** for view mode, **Ctrl+P** for every
-  command
-- **F1** (or **Ctrl+H**) for help, **Alt+,** for the settings (every key
-  can be changed there)
+**First keys:** **Ctrl+O** go to a note · **Ctrl+P** every command ·
+**Ctrl+G** search · **Ctrl+N** new note · **F1** help · **Alt+,** settings ·
+**Ctrl+Q** quit. Follow a link with **Ctrl+Enter** (or a click).
 
-- **JavaScript**: charts and queries in [[Charts]] and [[Queries]]
+## The guide
+
+- [[Workspace]]: the explorer, tabs, panes, the quick switcher, the palette,
+  settings and themes.
+- [[Writing]]: the live preview, formatting, highlight colors, callouts,
+  tasks, footnotes, folding, find and replace.
+- [[Links and embeds]]: links, backlinks, the outline, embedded notes,
+  blocks, images and bases.
+- [[Search and tags]]: the vault search, tags, query blocks.
+- [[Properties]]: a note's frontmatter, typed and edited in a window.
+- [[Notes and files]]: new notes, note IDs, renaming and moving, extracting.
+- [[Dates in words]]: `@tomorrow` becomes a link to that day.
+
+## Formatting
+
+The `Formatting/` folder shows everything a note can be written with:
+[[Headings and sections]], [[Text styles]], [[Lists]] and tasks,
+[[Quotes and callouts]], [[Code blocks]], [[Tables]],
+[[Footnotes and comments]].
+
+## The plugins
+
+On the settings' Plugins page (**Alt+,**) each can be installed, turned on
+or off; all but Git and Recent Files are on in this vault.
+
+| Plugin | Page |
+|--------|------|
+| Dataview | [[Dataview]] (and [[Query language]], [[Tasks and lists]], [[Dates and durations]], [[Inline queries]]) |
+| DataviewJS | [[DataviewJS]] ([[Queries]], [[Charts]], [[Dataview extras]]) |
+| Templater | [[Templater]] |
+| Periodic Notes | [[Periodic Notes]] |
+| Tasks | [[Tasks]] ([[Dashboard]], [[Tasks Backlog]]) |
+| Task Archiver | [[Task Archiver]] |
+| Bases | [[Bases]] ([[Kanban]]) |
+| Advanced Tables | [[Advanced Tables]] |
+| Mermaid | [[Mermaid]] |
+| Zettelkasten | [[Zettelkasten]] |
+| Citations | [[Citations]] |
+| Bookmarks | [[Bookmarks]] |
+| Recent Files | [[Recent Files]] |
+| Emoji Shortcodes | [[Emoji Shortcodes]] |
+| Encrypt | [[Encrypt]] |
+| Git | [[Git]] |
+
+## What the examples use
+
+`Books/`, `Journal/` (daily notes), `Articles/` and `Zettelkasten/` are notes
+the queries and boards above read; `Templates/` holds the templates,
+`Scripts/` Templater's scripts, `Data/` files a script reads, `assets/` an
+image, `refs.bib` the bibliography.
 
 #start

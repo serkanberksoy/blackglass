@@ -200,12 +200,14 @@ impl Ask {
                 .results
                 .get(self.selected)
                 .map(|&i| Answer::Choices(vec![i])),
+            Question::Show { .. } => Some(Answer::Choice(self.selected)),
             Question::Form { .. } => Some(Answer::Fields(
                 self.form
                     .iter()
                     .map(|v| match v {
                         crate::plugins::FieldValue::Text(t)
-                        | crate::plugins::FieldValue::Date(t) => Answer::Text(t.clone()),
+                        | crate::plugins::FieldValue::Date(t)
+                        | crate::plugins::FieldValue::Secret(t) => Answer::Text(t.clone()),
                         crate::plugins::FieldValue::Choice(_, i) => Answer::Choice(*i),
                     })
                     .collect(),
@@ -270,9 +272,18 @@ impl Ask {
                     *i = k;
                 }
             }
-            (KeyCode::Char('u'), FieldValue::Text(t) | FieldValue::Date(t)) if ctrl => t.clear(),
-            (KeyCode::Char(c), FieldValue::Text(t) | FieldValue::Date(t)) if !ctrl => t.push(c),
-            (KeyCode::Backspace, FieldValue::Text(t) | FieldValue::Date(t)) => {
+            (
+                KeyCode::Char('u'),
+                FieldValue::Text(t) | FieldValue::Date(t) | FieldValue::Secret(t),
+            ) if ctrl => t.clear(),
+            (
+                KeyCode::Char(c),
+                FieldValue::Text(t) | FieldValue::Date(t) | FieldValue::Secret(t),
+            ) if !ctrl => t.push(c),
+            (
+                KeyCode::Backspace,
+                FieldValue::Text(t) | FieldValue::Date(t) | FieldValue::Secret(t),
+            ) => {
                 t.pop();
             }
             (KeyCode::Enter | KeyCode::Esc, _) => return false,
@@ -473,6 +484,8 @@ pub struct App {
     dismissed: Option<(usize, usize)>,
     /// The vault's natural language dates settings (W-128).
     pub dates: crate::nldates::Settings,
+    /// Changes made to other notes, to undo and redo (W-133).
+    pub journal: crate::journal::Files,
 }
 
 impl App {
@@ -504,6 +517,7 @@ impl App {
             plugin_suggest: None,
             dismissed: None,
             dates: crate::nldates::Settings::load(&vault),
+            journal: crate::journal::Files::default(),
             back: Vec::new(),
             forward: Vec::new(),
             here: None,
@@ -981,6 +995,7 @@ impl App {
             if let Some(dir) = path.parent() {
                 std::fs::create_dir_all(dir).map_err(|e| format!("Cannot create note: {e}"))?;
             }
+            self.journal.touch(&path);
             mdedit::files::write_atomic(&path, text)
                 .map_err(|e| format!("Cannot create note: {e}"))?;
             self.rescan();
@@ -1701,6 +1716,7 @@ impl App {
         let view = self.tabs.get(self.active);
         let text = view.map(|v| v.editor.to_text());
         let selection = view.and_then(|v| v.editor.selected_text());
+        let selected = view.and_then(|v| v.editor.selection());
         let action = view.and_then(|v| v.read_action(&self.shared));
         let folder = self.sidebar.target_folder(&self.vault);
         let ctx = Context {
@@ -1709,6 +1725,7 @@ impl App {
                 path: v.path.as_deref(),
                 text,
                 selection: selection.as_deref(),
+                selected,
                 row: v.editor.row,
                 col: v.editor.col,
                 action: action.as_deref(),
@@ -2023,6 +2040,12 @@ impl App {
     /// `l` on an unlinked mention: its word becomes a link (`[[word]]`), in
     /// that note's file (not if it's open with unsaved changes).
     fn link_mention(&mut self, i: usize) {
+        self.journal.begin();
+        self.link_mention_now(i);
+        self.journal.end();
+    }
+
+    fn link_mention_now(&mut self, i: usize) {
         let Some(PaneItem::Mention(mention)) = self.link_pane().get(i).cloned() else {
             self.message = "Choose an unlinked mention to link it".into();
             return;
@@ -2056,6 +2079,7 @@ impl App {
         let word = line[start..end].to_string();
         line.replace_range(start..end, &format!("[[{word}]]"));
         let text = lines.join("\n");
+        self.journal.touch(&mention.note);
         if let Err(e) = mdedit::files::write_atomic(&mention.note, &text) {
             self.message = format!("Cannot link it: {e}");
             return;
@@ -2089,6 +2113,13 @@ impl App {
     }
 
     fn apply_effect(&mut self, id: &'static str, command: &'static str, effect: Effect) {
+        // What it does to files can be undone (W-133).
+        self.journal.begin();
+        self.apply_effect_now(id, command, effect);
+        self.journal.end();
+    }
+
+    fn apply_effect_now(&mut self, id: &'static str, command: &'static str, effect: Effect) {
         // An extract waits for its note only while it's being made.
         if !matches!(effect, Effect::Ask(_) | Effect::CreateNote { .. }) {
             self.extract = None;
@@ -2192,6 +2223,7 @@ impl App {
                 self.track();
             }
             Effect::CreateFile { path, text } => {
+                self.journal.touch(&path);
                 let written = path
                     .parent()
                     .map_or(Ok(()), std::fs::create_dir_all)
@@ -2216,6 +2248,7 @@ impl App {
                 } else if path.exists() {
                     self.message = format!("{} already exists", file_name(&path));
                 } else {
+                    self.journal.touch(&path);
                     let written = path
                         .parent()
                         .map_or(Ok(()), std::fs::create_dir_all)
@@ -2400,6 +2433,10 @@ impl App {
             })
             .collect();
         mdedit::markdown::set_rendered(rendered);
+        let plugins = Rc::clone(&self.plugins);
+        mdedit::markdown::set_table_cells(Some(Rc::new(move |lines: &[String]| {
+            plugins.try_borrow().ok()?.table_cells(lines)
+        })));
         let starts = self.plugins.borrow().hidden_lines();
         mdedit::markdown::set_hidden_lines((!starts.is_empty()).then(|| {
             let hide: mdedit::markdown::HostLines = Rc::new(move |line: &str| {
@@ -2515,6 +2552,8 @@ impl App {
             Host::DeleteNote => self.ask_delete(),
             Host::MoveNote => self.ask_move(),
             Host::ChooseTheme => self.ask_theme(),
+            Host::UndoFiles => self.undo_files(true),
+            Host::RedoFiles => self.undo_files(false),
         }
         Action::Continue
     }
@@ -2562,6 +2601,34 @@ impl App {
     }
 
     fn editor_key(&mut self, key: KeyEvent) {
+        // Undo / redo: of changes to other notes when the note has none of
+        // its own (a read-only page, or nothing left).
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+        let undo = ctrl
+            && matches!(key.code, KeyCode::Char('z'))
+            && !key.modifiers.contains(KeyModifiers::SHIFT);
+        let redo = ctrl
+            && (matches!(key.code, KeyCode::Char('y'))
+                || (matches!(key.code, KeyCode::Char('z' | 'Z'))
+                    && key.modifiers.contains(KeyModifiers::SHIFT)));
+        if (undo || redo)
+            && let Some(view) = self.tabs.get(self.active)
+        {
+            let own = if undo {
+                view.editor.history.can_undo()
+            } else {
+                view.editor.history.can_redo()
+            };
+            let others = if undo {
+                self.journal.can_undo()
+            } else {
+                self.journal.can_redo()
+            };
+            if others && (view.reading || !own) {
+                self.undo_files(undo);
+                return;
+            }
+        }
         let Some(view) = self.tabs.get_mut(self.active) else {
             return;
         };
@@ -2579,6 +2646,24 @@ impl App {
             self.saved(&path, &text);
         }
         self.outcome(outcome);
+    }
+
+    /// Undoes (`back`) or redoes the last change to other notes (W-133);
+    /// open notes without unsaved changes show it.
+    pub(crate) fn undo_files(&mut self, back: bool) {
+        match self.journal.step(back) {
+            Ok((paths, message)) => {
+                self.files_changed();
+                for p in paths
+                    .iter()
+                    .filter(|p| p.extension().is_some_and(|e| e == "base"))
+                {
+                    self.refresh_base_page(p);
+                }
+                self.message = message;
+            }
+            Err(e) => self.message = e,
+        }
     }
 
     /// [`Effect::EditNote`]: lines of a note, open or not, if they still
@@ -2615,6 +2700,8 @@ impl App {
             view.editor.col = col;
             view.editor.snap_col();
             if !was_dirty {
+                self.journal.touch(path);
+                let view = &mut self.tabs[i];
                 view.handle_key(
                     KeyEvent::new(KeyCode::Char('s'), KeyModifiers::CONTROL),
                     &mut self.shared,
@@ -2635,6 +2722,7 @@ impl App {
         if !text.is_empty() {
             text.push('\n');
         }
+        self.journal.touch(path);
         mdedit::files::write_atomic(path, &text)
             .map_err(|e| format!("Cannot save the note: {e}"))?;
         self.saved(path, &text);
@@ -2831,6 +2919,27 @@ impl App {
                 if matches!(ask.current(), Question::Form { .. }) && ask.form_key(key) {
                     self.prompt = Some(prompt);
                     return Action::Continue;
+                }
+                // A text's buttons: ←→ / Tab choose one.
+                if let Question::Show { buttons, .. } = ask.current() {
+                    let n = buttons.len().max(1);
+                    match key.code {
+                        KeyCode::Left | KeyCode::Up | KeyCode::BackTab => {
+                            ask.selected = (ask.selected + n - 1) % n;
+                        }
+                        KeyCode::Right | KeyCode::Down | KeyCode::Tab => {
+                            ask.selected = (ask.selected + 1) % n;
+                        }
+                        KeyCode::Enter | KeyCode::Esc => {}
+                        _ => {
+                            self.prompt = Some(prompt);
+                            return Action::Continue;
+                        }
+                    }
+                    if !matches!(key.code, KeyCode::Enter | KeyCode::Esc) {
+                        self.prompt = Some(prompt);
+                        return Action::Continue;
+                    }
                 }
                 match key.code {
                     KeyCode::Up => ask.selected = ask.selected.saturating_sub(1),
@@ -3216,6 +3325,12 @@ impl App {
     /// Renames the property `old` to `new` in every note's frontmatter
     /// (notes open with unsaved changes are left out, and named).
     fn rename_property(&mut self, old: &str, new: &str) {
+        self.journal.begin();
+        self.rename_property_now(old, new);
+        self.journal.end();
+    }
+
+    fn rename_property_now(&mut self, old: &str, new: &str) {
         if new.is_empty() || new.contains(':') {
             self.message = "A property's name can't be empty or have a colon".into();
             return;
@@ -3241,6 +3356,7 @@ impl App {
                 continue;
             };
             let text = rename_key(&text, old, new);
+            self.journal.touch(&note.path);
             match mdedit::files::write_atomic(&note.path, &text) {
                 Ok(()) => changed.push(note.path.clone()),
                 Err(e) => skipped.push(format!("{} ({e})", note.name())),
@@ -3796,6 +3912,22 @@ impl App {
         from: &Path,
         to: &Path,
     ) -> Result<String, String> {
+        self.journal.begin();
+        let done = self.apply_moves_now(moves, from, to);
+        self.journal.end();
+        done
+    }
+
+    fn apply_moves_now(
+        &mut self,
+        moves: Vec<(PathBuf, PathBuf)>,
+        from: &Path,
+        to: &Path,
+    ) -> Result<String, String> {
+        for (a, b) in &moves {
+            self.journal.touch(a);
+            self.journal.touch(b);
+        }
         let updates = crate::backlinks::link_updates(&self.vault, &moves);
         if let Some(dir) = to.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("Cannot rename: {e}"))?;
@@ -3818,6 +3950,7 @@ impl App {
                 skipped.push(file_name(&path));
                 continue;
             }
+            self.journal.touch(&path);
             if let Err(e) = mdedit::files::write_atomic(&path, &update.text) {
                 skipped.push(format!("{} ({e})", file_name(&path)));
                 continue;
@@ -3888,6 +4021,7 @@ impl App {
                 skipped.push(file_name(&update.note));
                 continue;
             }
+            self.journal.touch(&update.note);
             mdedit::files::write_atomic(&update.note, &update.text)
                 .map_err(|e| format!("Cannot update {}: {e}", file_name(&update.note)))?;
             links += update.links;
@@ -4164,6 +4298,14 @@ impl App {
     /// Moves the note at `path` to the vault's trash folder and closes its
     /// tab (unsaved changes go with it).
     fn delete_note(&mut self, path: &Path) -> Result<(), String> {
+        self.journal.begin();
+        let done = self.delete_note_now(path);
+        self.journal.end();
+        done
+    }
+
+    fn delete_note_now(&mut self, path: &Path) -> Result<(), String> {
+        self.journal.touch(path);
         let name = file_name(path);
         let trash = self.vault.root.join(TRASH);
         std::fs::create_dir_all(&trash).map_err(|e| format!("Cannot delete {name}: {e}"))?;
@@ -4179,6 +4321,7 @@ impl App {
             })
             .find(|p| !p.exists())
             .expect("some name in the trash is free");
+        self.journal.touch(&target);
         std::fs::rename(path, &target).map_err(|e| format!("Cannot delete {name}: {e}"))?;
         if let Some(i) = self
             .tabs
@@ -4488,7 +4631,9 @@ impl App {
             }
             Some(Prompt::Ask(ask)) if matches!(ask.current(), Question::Form { .. }) => {
                 if let Some(
-                    crate::plugins::FieldValue::Text(t) | crate::plugins::FieldValue::Date(t),
+                    crate::plugins::FieldValue::Text(t)
+                    | crate::plugins::FieldValue::Date(t)
+                    | crate::plugins::FieldValue::Secret(t),
                 ) = ask.form.get_mut(ask.field)
                 {
                     t.push_str(&line);
@@ -4539,6 +4684,19 @@ impl App {
         self.refresh_suggest();
         self.track();
         action
+    }
+
+    /// The mouse moved (no button): the note's rendered block under it
+    /// gets its frame and source button. True if the screen changed (draw
+    /// again); other moves draw nothing.
+    pub fn mouse_moved(&mut self, event: MouseEvent) -> bool {
+        let at = Position::new(event.column, event.row);
+        let over = (self.prompt.is_none() && self.preview.is_none())
+            .then_some(at)
+            .filter(|&at| self.areas.editor.contains(at));
+        self.tabs
+            .get_mut(self.active)
+            .is_some_and(|view| view.hover(over))
     }
 
     fn mouse(&mut self, event: MouseEvent) -> Action {

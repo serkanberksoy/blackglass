@@ -1,0 +1,51 @@
+# A kanban board of the notes in Plugins/Bases/Projects, in the format the
+# original app (1.14 and later) reads and writes. Open it from the file
+# explorer:
+#   ←→↑↓ choose a card · Enter open it
+#   Shift+←→ move it to another column (its status is written)
+#   Alt+Shift+←→ move the column · n new note in the column
+#   Space collapse the column · Alt+F the filters · Alt+M their size
+# groupColors and cardColor are blackglass's (the original app ignores
+# them). Changing the board from blackglass rewrites this file without
+# these comments, as the original app does.
+filters:
+  and:
+    - file.inFolder("Plugins/Bases/Projects")
+formulas:
+  urgency: if(priority == "high", "red", if(priority == "low", "gray", ""))
+views:
+  - type: kanban
+    name: Board
+    groupBy:
+      property: status
+      direction: ASC
+    groupOrder:
+      - Ideas
+      - Planned
+      - Doing
+      - Done
+      - null
+    groupColors:
+      Ideas: purple
+      Planned: blue
+      Doing: yellow
+      Done: green
+    cardColor: formula.urgency
+    columnWidth: 22
+    order:
+      - file.name
+      - priority
+      - due
+    sort:
+      - property: due
+        direction: ASC
+  - type: table
+    name: Table
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - file.name
+      - status
+      - priority
+      - due

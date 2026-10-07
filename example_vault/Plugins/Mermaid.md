@@ -1,4 +1,4 @@
-# Diagrams
+# Mermaid
 
 The Mermaid plugin draws ```` ```mermaid ```` blocks as text.
 

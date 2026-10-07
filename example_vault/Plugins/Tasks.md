@@ -17,13 +17,15 @@ done date is written, and a 🔁 task gets its next occurrence. "Tasks:
 Create or edit task" (**Alt+T**) opens a window with every field (each
 with its value, or a default like no priority); "Tasks: Postpone task"
 moves it. Both work on a task in a query's results too: Alt+V to view
-mode, the cursor on the result, then the command.
+mode, the cursor on the result, then the command. In the window, a date
+field shows a calendar beside it: Shift+arrows move a day or a week,
+PgUp / PgDn a month, a click picks a day.
 
 ## Open, by due date
 
 ```tasks
 not done
-path includes Examples/Tasks
+path includes Plugins/Tasks
 group by due
 sort by priority
 ```
@@ -31,7 +33,7 @@ sort by priority
 ## As a tree
 
 ```tasks
-path includes Examples/Tasks
+path includes Plugins/Tasks
 not done
 show tree
 hide backlink
@@ -54,3 +56,6 @@ status.type is NON_TASK
 ```
 
 Click a task in a result to check it off.
+
+More: [[Dashboard]] (task lists in callouts), [[Tasks Backlog]], and the
+[[Task Archiver]] for moving done tasks out of the way.

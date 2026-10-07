@@ -2,7 +2,7 @@
 
 A **kanban board** is a Bases view (`type: kanban`): a column for each
 value of the property it's grouped by. Open
-[[Examples/Projects.base|Projects.base]] from the file explorer; it's the
+[[Plugins/Bases/Projects.base|Projects.base]] from the file explorer; it's the
 same `.base` file the original app (1.14 and later) reads and writes.
 
 | Key | Does |
@@ -13,6 +13,7 @@ same `.base` file the original app (1.14 and later) reads and writes.
 | Alt+Shift+←→ | move the column (saved as `groupOrder`) |
 | n | a new note in the column, with its status |
 | Space | collapse or expand the column |
+| Ctrl+Z | undo the last move (Ctrl+Y redoes it) |
 
 Each is a command too (Ctrl+P, "Bases: Move card to next column" …).
 
@@ -35,4 +36,4 @@ What the YAML says:
 
 The board embedded:
 
-![[Examples/Projects.base]]
+![[Plugins/Bases/Projects.base]]

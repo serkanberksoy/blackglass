@@ -10,7 +10,7 @@ use mdedit::terminal::Capabilities;
 use ratatui::DefaultTerminal;
 use ratatui::crossterm::event::{
     self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    Event, KeyEventKind, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    Event, KeyEventKind, KeyboardEnhancementFlags, MouseEventKind, PopKeyboardEnhancementFlags,
     PushKeyboardEnhancementFlags,
 };
 use ratatui::crossterm::execute;
@@ -166,8 +166,11 @@ fn leave_modes(enhanced: bool, mouse: bool) {
 }
 
 fn run(terminal: &mut DefaultTerminal, app: &mut App) -> io::Result<()> {
+    let mut draw = true;
     loop {
-        terminal.draw(|f| ui::draw(f, app))?;
+        if draw {
+            terminal.draw(|f| ui::draw(f, app))?;
+        }
         // Idle: the plugins' timers and background work every half second;
         // drawn again only when something happened.
         while !event::poll(Duration::from_millis(500))? {
@@ -181,9 +184,16 @@ fn run(terminal: &mut DefaultTerminal, app: &mut App) -> io::Result<()> {
         // Handle every event that's already waiting before drawing again, so
         // a held key or a fast typist never waits for frames.
         let mut next = event::read()?;
+        // Mouse moves draw again only when they change something.
+        draw = false;
         loop {
+            draw |= !matches!(&next, Event::Mouse(m) if m.kind == MouseEventKind::Moved);
             let action = match next {
                 Event::Key(key) if key.kind == KeyEventKind::Press => app.handle_key(key),
+                Event::Mouse(mouse) if mouse.kind == MouseEventKind::Moved => {
+                    draw |= app.mouse_moved(mouse);
+                    Action::Continue
+                }
                 Event::Mouse(mouse) => app.handle_mouse(mouse),
                 Event::Paste(text) => {
                     app.handle_paste(&text);

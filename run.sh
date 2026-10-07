@@ -2,7 +2,7 @@
 # Runs the latest debug build of blackglass on the example vault.
 #
 #   ./run.sh                         # the example vault
-#   ./run.sh Dataview.md             # a note in it (a path inside example_vault/)
+#   ./run.sh Plugins/Dataview.md     # a note in it (a path inside example_vault/)
 #   ./run.sh --no-mouse              # options are passed on
 #
 # Builds first (cargo only rebuilds what changed), so it's always current.

@@ -247,11 +247,31 @@ In order:
       as Obsidian 1.14 has them.
     - ✅ **Periodic Notes, the rest (0.82.0):** its gaps in
       `requirements/periodic_requirements.md` (PN-27 ribbon icons ✗).
+    - ✅ **Table formulas and undo (0.90.0 … 0.92.0):** TBLFM formulas
+      worked out by themselves, spreadsheet cells (`=SUM(B2:B4)`), 1000
+      undo steps, undoing changes to other notes (W-133).
+    - **Importing (W-132, planned):** Evernote `.enex` exports and Google
+      Keep's Takeout folder into notes (text as Markdown, checklists as
+      tasks, labels as tags, dates as properties, attachments beside them).
     - ✅ **Bases kanban (0.83.0):** Obsidian 1.14's kanban (`groupOrder`,
       None), keys to move cards and columns, new notes in a column,
       colors. Next: the Group menu and collapsible groups for every
       layout (BA-47b), and cards on boards embedded in notes (a mdedit
       API for actions on part of a line).
+18. **Requested 2026-10-07** (from the ad hoc list):
+    - ✅ **W-134 encrypt / decrypt (0.93.0):** a selection, with a password
+      and an optional hint, in Meld Encrypt's format (its older texts read
+      too). Whole-note encryption isn't wanted (decided).
+    - ✅ **W-135 task estimates (0.94.0):** `[estimate:: 2h]` on tasks, a
+      duration as in Dataview, summed by one-line queries; no extra
+      display (decided).
+    - ✅ **W-137 query blocks and the mouse (0.95.0, mdedit 3.20.0):**
+      hover frame with a `</>` button, clicks on links and tasks in
+      results without showing the source; the source by keys or the
+      button.
+    - **W-136 sequenced hotkeys:** not now (decided); a leader key and a
+      popup of what can follow, if it comes back.
+    - **W-115 file recovery** (snapshots with a diff) moved up from M8.
 
 ## 2. M1: Workspace ✅
 

@@ -8,10 +8,13 @@
 //! align, sort, transpose, export CSV and evaluate `TBLFM` formulas. Each
 //! change replaces the table's lines: one undo step.
 
+mod cells;
 mod formula;
 mod table;
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+use std::path::{Path, PathBuf};
 
 use super::settings::{Kind, Setting, Values};
 use super::{Context, Effect, Manifest, Plugin, PluginCommand};
@@ -30,6 +33,14 @@ pub struct Tables {
     pad: bool,
     /// The Table tab in the sidebar (the controls).
     controls: bool,
+    /// Formulas worked out when their table changes (else only by
+    /// command).
+    auto: bool,
+    /// Cells starting with `=` shown as their results.
+    cell_formulas: bool,
+    /// The table with formulas the cursor was in at the last tick: its
+    /// note and first line (worked out when the cursor leaves it).
+    watched: Option<(Option<PathBuf>, usize)>,
 }
 
 impl Tables {
@@ -39,6 +50,9 @@ impl Tables {
             bind_enter: true,
             pad: true,
             controls: true,
+            auto: true,
+            cell_formulas: true,
+            watched: None,
         }
     }
 }
@@ -93,6 +107,19 @@ impl AtCursor {
 }
 
 impl AtCursor {
+    /// Works out the formulas under the table (if any).
+    fn recalc(&mut self, ctx: &Context) -> Result<(), String> {
+        let lines: Vec<&str> = ctx
+            .note
+            .map(|n| n.text.lines().collect())
+            .unwrap_or_default();
+        let formulas = formula::formulas(lines.get(self.to..).unwrap_or_default().iter().copied());
+        if formulas.is_empty() {
+            return Ok(());
+        }
+        formula::evaluate(&mut self.table, &formulas)
+    }
+
     /// Writes the table back and puts the cursor on the (blank) line after
     /// it, adding one if there's none.
     fn leave(self, pad: bool, ctx: &Context) -> Effect {
@@ -133,6 +160,11 @@ impl Plugin for Tables {
         self.on_vault_changed(vault);
     }
 
+    /// Cells starting with `=` worked out (AT-44).
+    fn table_cells(&self, lines: &[String]) -> Option<Vec<String>> {
+        self.cell_formulas.then(|| cells::compute(lines)).flatten()
+    }
+
     /// A table's formula line shows only while it's edited (AT-38).
     fn hidden_lines(&self) -> Vec<&'static str> {
         vec!["<!-- TBLFM:"]
@@ -146,6 +178,8 @@ impl Plugin for Tables {
         self.bind_enter = on("bind_enter");
         self.pad = on("pad");
         self.controls = on("controls");
+        self.auto = values.get("", "formulas") != Some("on command");
+        self.cell_formulas = on("cell_formulas");
     }
 
     fn settings(&self) -> Vec<Setting> {
@@ -167,6 +201,19 @@ impl Plugin for Tables {
                 "pad",
                 "Pad cells with spaces",
                 "Line the columns up; off: one space around each cell",
+            ),
+            Setting::new(
+                "",
+                "formulas",
+                "Recalculate formulas",
+                "Work out a table's TBLFM formulas when it changes (Tab, Enter, leaving it), or only by command",
+                Kind::Choice(vec!["automatically".into(), "on command".into()]),
+                "automatically",
+            ),
+            toggle(
+                "cell_formulas",
+                "Spreadsheet cells",
+                "A cell starting with = (=B2*C2, =SUM(D2:D4)) shows its result; A1 is the header's first cell",
             ),
             toggle(
                 "controls",
@@ -263,7 +310,7 @@ impl Plugin for Tables {
             }
             _ => return None,
         };
-        Some(at.write(self.pad, row, col, Vec::new()))
+        Some(self.finish(at, row, col, ctx))
     }
 
     fn run(&mut self, id: &str, ctx: &Context) -> Effect {
@@ -366,11 +413,78 @@ impl Plugin for Tables {
             "move-out" => return at.leave(self.pad, ctx),
             _ => return Effect::None,
         };
-        at.write(self.pad, row, col, Vec::new())
+        if id == "evaluate-formulas" {
+            return at.write(self.pad, row, col, Vec::new());
+        }
+        self.finish(at, row, col, ctx)
+    }
+
+    fn tick(&mut self, ctx: &Context) -> Effect {
+        self.recalc_left(ctx)
     }
 }
 
 impl Tables {
+    /// The table at the cursor written back (its formulas worked out
+    /// first, when they're automatic), with the cursor at `row`, `col`.
+    fn finish(&self, mut at: AtCursor, row: usize, col: usize, ctx: &Context) -> Effect {
+        let problem = if self.auto {
+            at.recalc(ctx).err()
+        } else {
+            None
+        };
+        let written = at.write(self.pad, row, col, Vec::new());
+        match problem {
+            Some(e) => Effect::Many(vec![
+                written,
+                Effect::Message(format!("Advanced Tables: {e}")),
+            ]),
+            None => written,
+        }
+    }
+
+    /// At a tick: when the cursor has left a table with formulas, they're
+    /// worked out (if anything changes).
+    fn recalc_left(&mut self, ctx: &Context) -> Effect {
+        let Some(note) = ctx.note.filter(|_| self.auto) else {
+            self.watched = None;
+            return Effect::None;
+        };
+        let lines: Vec<&str> = note.text.lines().collect();
+        let path = note.path.map(Path::to_path_buf);
+        let here = table::find(&lines, note.row).map(|r| r.start);
+        let left = self
+            .watched
+            .take()
+            .filter(|(p, start)| *p == path && here != Some(*start));
+        if let Some(range) = table::find(&lines, note.row)
+            && !formula::formulas(lines[range.end..].iter().copied()).is_empty()
+        {
+            self.watched = Some((path, range.start));
+        }
+        let Some((_, start)) = left else {
+            return Effect::None;
+        };
+        let Some(range) = table::find(&lines, start).filter(|r| r.start == start) else {
+            return Effect::None;
+        };
+        let formulas = formula::formulas(lines[range.end..].iter().copied());
+        let mut t = Table::parse(&lines[range.clone()]);
+        if formulas.is_empty() || formula::evaluate(&mut t, &formulas).is_err() {
+            return Effect::None;
+        }
+        let new = t.format(self.pad);
+        if new.len() != range.len() || new.iter().zip(&lines[range.clone()]).all(|(a, b)| a == b) {
+            return Effect::None;
+        }
+        Effect::ReplaceLines {
+            from: range.start,
+            to: range.end,
+            lines: new,
+            cursor: (note.row, note.col),
+        }
+    }
+
     /// "Format all tables": every table in the note lined up.
     fn format_all(&self, ctx: &Context) -> Effect {
         let Some(note) = ctx.note else {

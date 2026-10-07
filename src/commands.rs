@@ -54,6 +54,9 @@ pub enum Host {
     Footnotes,
     EditProperties,
     ChooseTheme,
+    /// Undo the last change to other notes (W-133).
+    UndoFiles,
+    RedoFiles,
 }
 
 /// The natural language dates commands (W-128).
@@ -199,6 +202,8 @@ pub fn builtin() -> Vec<Command> {
         host("Settings", "Alt+, / Ctrl+,", Host::Settings),
         host("Open vault", "", Host::OpenVault),
         host("Choose theme", "", Host::ChooseTheme),
+        host("Undo last change to other notes", "", Host::UndoFiles),
+        host("Redo last change to other notes", "", Host::RedoFiles),
         host("Go to note", "Ctrl+O", Host::GoToNote),
         host("New note", "Ctrl+N", Host::NewNote),
         host("New note from template", "", Host::NewFromTemplate),

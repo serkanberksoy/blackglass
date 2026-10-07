@@ -213,6 +213,48 @@ fn input_row(
     Some(Position::new(end.min(inner.right().saturating_sub(1)), y))
 }
 
+/// `text`'s lines wrapped at spaces to `width` columns (a longer word
+/// broken).
+fn wrap(text: &str, width: usize) -> Vec<String> {
+    let width = width.max(1);
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let mut row = String::new();
+        for word in line.split(' ') {
+            let mut word = word.to_string();
+            while !word.is_empty() {
+                let gap = usize::from(!row.is_empty());
+                if row.width() + gap + word.width() <= width {
+                    if gap == 1 {
+                        row.push(' ');
+                    }
+                    row.push_str(&word);
+                    word.clear();
+                } else if row.is_empty() {
+                    // Longer than a row: as much as fits.
+                    let mut cut = 0;
+                    let mut w = 0;
+                    for (i, c) in word.char_indices() {
+                        let cw = unicode_width::UnicodeWidthChar::width(c).unwrap_or(0);
+                        if w + cw > width {
+                            break;
+                        }
+                        w += cw;
+                        cut = i + c.len_utf8();
+                    }
+                    let cut = cut.max(word.chars().next().map_or(0, char::len_utf8));
+                    out.push(word[..cut].to_string());
+                    word = word[cut..].to_string();
+                } else {
+                    out.push(std::mem::take(&mut row));
+                }
+            }
+        }
+        out.push(row);
+    }
+    out
+}
+
 fn hint(buf: &mut Buffer, inner: Rect, row: u16, text: &str, theme: &Theme) {
     put(
         buf,
@@ -831,7 +873,7 @@ fn draw_form(
         let x = inner.x + 1 + label_w;
         let width = inner.right().saturating_sub(x + 1);
         match value {
-            FieldValue::Text(t) | FieldValue::Date(t) if t.is_empty() => {
+            FieldValue::Text(t) | FieldValue::Date(t) | FieldValue::Secret(t) if t.is_empty() => {
                 put(buf, x, y, theme.glyph("—", "-"), width, theme.on(FAINT, bg));
                 if here {
                     cursor = Some(Position::new(x, y));
@@ -847,6 +889,15 @@ fn draw_form(
                 put(buf, x, y, &shown, width, theme.on(TEXT, bg));
                 if here {
                     cursor = Some(Position::new(x + shown.chars().count() as u16, y));
+                }
+            }
+            FieldValue::Secret(t) => {
+                let dots = theme
+                    .glyph("•", "*")
+                    .repeat(t.chars().count().min(width as usize));
+                put(buf, x, y, &dots, width, theme.on(TEXT, bg));
+                if here {
+                    cursor = Some(Position::new(x + dots.chars().count() as u16, y));
                 }
             }
             FieldValue::Choice(items, chosen) => {
@@ -953,6 +1004,50 @@ fn draw_ask(
 ) -> Option<Position> {
     match ask.current() {
         Question::Form { title, fields } => draw_form(buf, screen, app, ask, title, fields, theme),
+        Question::Show {
+            title,
+            text,
+            buttons,
+        } => {
+            let width = screen.width.saturating_sub(4).min(72).saturating_sub(2);
+            let lines = wrap(text, width.saturating_sub(2) as usize);
+            let shown = (lines.len() as u16)
+                .min(screen.height.saturating_sub(8))
+                .max(1);
+            let inner = frame_sized(buf, screen, &format!(" {title} "), 72, shown + 4, theme)?;
+            for (row, line) in lines.iter().take(shown as usize).enumerate() {
+                let style = theme.on(TEXT, BG_PROMPT);
+                put(
+                    buf,
+                    inner.x + 1,
+                    inner.y + row as u16,
+                    line,
+                    inner.width - 1,
+                    style,
+                );
+            }
+            // The buttons, the chosen one highlighted.
+            let mut x = inner.x + 1;
+            for (i, button) in buttons.iter().enumerate() {
+                let label = format!(" {button} ");
+                let style = if i == ask.selected {
+                    theme.bold(ACCENT, BG_SELECTED)
+                } else {
+                    theme.on(MUTED, BG_RAISED)
+                };
+                let w = label.width() as u16;
+                put(buf, x, inner.y + shown + 1, &label, w, style);
+                x += w + 2;
+            }
+            hint(
+                buf,
+                inner,
+                shown + 3,
+                "←→ choose  ·  Enter ok  ·  Esc close",
+                theme,
+            );
+            None
+        }
         Question::Text { prompt, default } => {
             let title = format!(" {prompt} ");
             let inner = frame(buf, screen, &title, 3, theme)?;

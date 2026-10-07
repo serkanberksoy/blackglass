@@ -143,7 +143,8 @@ impl Dur {
 }
 
 impl Value {
-    /// A field's text, typed: `[a, b]` is a list, and quotes make text.
+    /// A field's text, typed: `[a, b]` is a list, quotes make text; a
+    /// number, a date or a duration (`2h`) is one.
     pub fn parse(raw: &str) -> Value {
         let raw = raw.trim();
         if raw.is_empty() {
@@ -197,6 +198,12 @@ impl Value {
         }
         if let Some(date) = parse_date(raw) {
             return Value::Date(date);
+        }
+        // `2h`, `1.5 hours`, `4hr 2min`: a duration, as Dataview types them.
+        if raw.starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '.')
+            && let Some(dur) = Dur::parse(raw)
+        {
+            return Value::Duration(dur);
         }
         Value::Text(raw.to_string())
     }
@@ -444,6 +451,11 @@ mod tests {
         assert_eq!(d("3 weeks").display(), "21 days");
         assert_eq!(d("1 day 2 hours").display(), "1 day, 2 hours");
         assert!(Dur::parse("soon").is_none());
+        // A field's value is typed as one, as Dataview does (`[estimate:: 2h]`).
+        assert_eq!(Value::scalar("2h"), Value::Duration(d("2 hours")));
+        assert_eq!(Value::scalar("1.5h"), Value::Duration(d("90 minutes")));
+        assert_eq!(Value::scalar("4hr 2min"), Value::Duration(d("242 minutes")));
+        assert_eq!(Value::scalar("3 apples"), Value::Text("3 apples".into()));
         let jan31 = NaiveDate::from_ymd_opt(2026, 1, 31)
             .unwrap()
             .and_time(NaiveTime::MIN);

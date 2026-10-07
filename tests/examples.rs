@@ -94,7 +94,10 @@ fn inline_queries(lines: &[String]) -> Vec<(&'static str, String)> {
             }
             if let Some(code) = part.strip_prefix("$=") {
                 found.push(("`$=", code.to_string()));
-            } else if let Some(code) = part.strip_prefix('=').filter(|c| !c.starts_with('=')) {
+            } else if let Some(code) = part
+                .strip_prefix('=')
+                .filter(|c| !c.starts_with('=') && !c.trim().is_empty())
+            {
                 found.push(("`=", code.to_string()));
             }
         }
@@ -169,7 +172,7 @@ fn every_template_in_the_example_vault_renders() {
                 Question::Text { default, .. } | Question::Lines { default, .. } => {
                     Answer::Text(default.clone())
                 }
-                Question::Choose { .. } => Answer::Choice(0),
+                Question::Choose { .. } | Question::Show { .. } => Answer::Choice(0),
                 Question::Many { .. } => Answer::Choices(Vec::new()),
                 Question::Form { .. } => Answer::Fields(Vec::new()),
             }));
