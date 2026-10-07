@@ -11,6 +11,7 @@
 //! - Commands: toggle done, create or edit a task (a window of every
 //!   field, Alt+T), postpone.
 
+pub mod function;
 pub mod query;
 pub mod results;
 pub mod task;
@@ -32,7 +33,9 @@ const ID: &str = "tasks";
 
 /// Rendered blocks by (query, note, width, day); cleared when the vault
 /// changes.
-type Cache = HashMap<(String, Option<PathBuf>, usize, NaiveDate), Vec<results::Row>>;
+/// A drawn block's key: its query, note, width and day.
+type CacheKey = (String, Option<PathBuf>, usize, NaiveDate);
+type Cache = HashMap<CacheKey, Vec<results::Row>>;
 
 #[derive(Default)]
 pub struct Tasks {
@@ -49,6 +52,10 @@ pub struct Tasks {
     /// New fields in the Dataview format (`[due:: …]`).
     dataview: bool,
     cache: RefCell<Cache>,
+    /// Results kept as drawn for a moment after a task is checked in them.
+    frozen: super::freeze::Frozen<CacheKey>,
+    /// How long (a setting).
+    keep_checked: std::time::Duration,
     /// The task being created or edited: where, and the line as it was
     /// (`None` for a new one).
     editing: Option<(Spot, Option<String>)>,
@@ -220,16 +227,31 @@ impl Tasks {
                         format!("Tasks query: {e}"),
                         ratatui::style::Style::new().fg(ratatui::style::Color::LightRed),
                     ),
-                    None,
+                    Vec::new(),
                 )];
             }
         };
         let (open_ids, depended_on) = results::dependencies(&self.tasks, &self.statuses);
+        // Its JavaScript functions, for every task at once.
+        let computed = match function::compute(&query.functions, &self.tasks, today, &self.statuses)
+        {
+            Ok(c) => c,
+            Err(e) => {
+                return vec![(
+                    Line::styled(
+                        format!("Tasks query: {e}"),
+                        ratatui::style::Style::new().fg(ratatui::style::Color::LightRed),
+                    ),
+                    Vec::new(),
+                )];
+            }
+        };
         let env = query::Env {
             today,
             statuses: &self.statuses,
             open_ids: &open_ids,
             depended_on: &depended_on,
+            functions: Some(&computed),
         };
         let remove = (self.remove_global_filter && !self.global_filter.is_empty())
             .then_some(self.global_filter.as_str());
@@ -734,6 +756,11 @@ impl Plugin for Tasks {
         };
         self.dataview = get("format") == "dataview";
         self.statuses = Statuses::with_custom(&get("statuses")).0;
+        self.keep_checked = super::freeze::seconds(
+            values
+                .get("", "keep_checked")
+                .unwrap_or(super::freeze::DEFAULT),
+        );
         self.root = vault.root.clone();
         self.index(vault);
         self.cache.borrow_mut().clear();
@@ -746,6 +773,14 @@ impl Plugin for Tasks {
         let text =
             |key: &str, label: &str, help: &str| Setting::new("", key, label, help, Kind::Text, "");
         vec![
+            Setting::new(
+                "",
+                "keep_checked",
+                "Checked tasks stay (seconds)",
+                "A task checked in a query's results stays shown this long, to click again (0 to 10)",
+                Kind::Text,
+                super::freeze::DEFAULT,
+            ),
             text(
                 "global_filter",
                 "Global filter",
@@ -974,6 +1009,20 @@ impl Plugin for Tasks {
             return Effect::Message("Tasks: that task isn't there any more".into());
         };
         let lines = task::toggle(t, &self.statuses, today(), &self.toggle);
+        // Its row stays, in its new state, for a moment: the line that
+        // isn't in the old state (a recurring task's next one is new).
+        let status = lines
+            .iter()
+            .filter_map(|l| Task::parse(l))
+            .map(|n| n.status)
+            .find(|&s| s != t.status)
+            .unwrap_or(t.status);
+        self.frozen.hold(
+            &self.cache.borrow(),
+            &results::toggle_action(t),
+            status,
+            self.keep_checked,
+        );
         Effect::EditNote {
             path: self.root.join(rel),
             from: line,
@@ -981,6 +1030,15 @@ impl Plugin for Tasks {
             lines,
             expect: vec![t.raw.clone()],
         }
+    }
+
+    fn tick(&mut self, _ctx: &Context) -> Effect {
+        // Checked results held long enough: drawn anew.
+        if self.frozen.expire() {
+            self.cache.borrow_mut().clear();
+            return Effect::Redraw;
+        }
+        Effect::None
     }
 
     fn block_languages(&self) -> &[&'static str] {
@@ -1002,17 +1060,34 @@ impl Plugin for Tasks {
 
     fn render_block_rows(
         &self,
-        _lang: &str,
+        lang: &str,
         source: &[String],
         from: Option<&Path>,
         width: usize,
     ) -> Vec<(Line<'static>, Option<String>)> {
+        // A row's first action (a task's: checking it), for view mode.
+        self.render_block_cells(lang, source, from, width)
+            .into_iter()
+            .map(|(line, parts)| (line, parts.into_iter().next().map(|(.., a)| a)))
+            .collect()
+    }
+
+    fn render_block_cells(
+        &self,
+        _lang: &str,
+        source: &[String],
+        from: Option<&Path>,
+        width: usize,
+    ) -> Vec<mdedit::processor::CellRow> {
         let key = (
             source.join("\n"),
             from.map(Path::to_path_buf),
             width,
             today(),
         );
+        if let Some(rows) = self.frozen.get(&key) {
+            return rows;
+        }
         if let Some(rows) = self.cache.borrow().get(&key) {
             return rows.clone();
         }

@@ -86,6 +86,37 @@ pub struct Bases {
     new_in: Option<(String, Option<String>)>,
     /// The filter pane.
     pane: pane::FilterPane,
+    /// Each base's tag in actions (a hash of its YAML) → its YAML.
+    tags: RefCell<HashMap<String, String>>,
+    /// A board card's menu: its note, the property the board groups by,
+    /// its column's group and the groups it can move to.
+    card_menu: Option<CardMenu>,
+    /// The Group menu's command waiting for a choice (its groups, all of
+    /// them, and the one being moved).
+    group_menu: Option<GroupMenu>,
+}
+
+/// A board card's menu: its note (page), the property the board groups
+/// by, its column's group and the groups it can move to.
+type CardMenu = (usize, String, Option<String>, Vec<Option<String>>);
+
+/// What a Group menu command asked about.
+#[derive(Debug, Clone)]
+struct GroupMenu {
+    /// Every group the view has (shown or not), in the board's order.
+    all: Vec<Option<String>>,
+    /// The groups shown, in order (the `groupOrder` to write).
+    shown: Vec<Option<String>>,
+    /// "Reorder groups": the group chosen to move.
+    moving: Option<Option<String>>,
+}
+
+/// A base's tag in actions: a short hash of its YAML.
+fn tag_of(source: &str) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    source.hash(&mut h);
+    format!("{:x}", h.finish())
 }
 
 /// A board's selected card.
@@ -232,6 +263,13 @@ impl Bases {
             search: self.search.get(source).map(String::as_str),
             selected: None,
             collapsed: self.collapsed.get(source).map_or(&[], Vec::as_slice),
+            tag: {
+                let tag = tag_of(source);
+                self.tags
+                    .borrow_mut()
+                    .insert(tag.clone(), source.to_string());
+                tag
+            },
         }
     }
 
@@ -441,6 +479,176 @@ impl Bases {
             lines: new.lines().map(String::from).collect(),
             expect: text.lines().map(String::from).collect(),
         }
+    }
+
+    /// The groups of the view at the cursor (its base grouped): every one
+    /// it has and those shown, for the Group menu.
+    fn groups_here(&self, ctx: &Context) -> Result<GroupMenu, Effect> {
+        let no = |m: &str| Effect::Message(format!("Bases: {m}"));
+        let found = base_at_cursor(ctx).ok_or_else(|| no("no base here"))?;
+        let base = syntax::parse(&found.source).map_err(|e| no(&e))?;
+        let input = self.input(&base, &found.source, None);
+        let view = &base.views[input.view];
+        if view.group_by.is_none() {
+            return Err(no("the view isn't grouped (Bases: Group view)"));
+        }
+        let results = views::run(&input).map_err(|e| no(&e))?;
+        let shown = board::order(&board::columns(view, &results, &self.index.pages));
+        // Every group: the notes' (without the view's order and hiding),
+        // and those groupOrder names.
+        let mut free = view.clone();
+        free.group_order = None;
+        free.options.retain(|(k, _)| k != "hideEmptyColumns");
+        let mut all = board::order(&board::columns(&free, &results, &self.index.pages));
+        for g in view.group_order.iter().flatten() {
+            if !all.contains(g) {
+                all.push(g.clone());
+            }
+        }
+        Ok(GroupMenu {
+            all,
+            shown,
+            moving: None,
+        })
+    }
+
+    /// A collapse or a card's menu, from a click on a base's group
+    /// heading or board card (`group:<tag>:<label>`,
+    /// `card:<tag>:<column>:<note>`).
+    fn base_action(&mut self, payload: &str) -> Option<Effect> {
+        if let Some(rest) = payload.strip_prefix("group:") {
+            let (tag, label) = rest.split_once(':')?;
+            let source = self.tags.borrow().get(tag).cloned()?;
+            let list = self.collapsed.entry(source).or_default();
+            match list.iter().position(|l| l == label) {
+                Some(i) => {
+                    list.remove(i);
+                }
+                None => list.push(label.to_string()),
+            }
+            self.cache.borrow_mut().clear();
+            return Some(Effect::Redraw);
+        }
+        let rest = payload.strip_prefix("card:")?;
+        let (tag, rest) = rest.split_once(':')?;
+        let (column, rel) = rest.split_once(':')?;
+        let source = self.tags.borrow().get(tag).cloned()?;
+        let base = syntax::parse(&source).ok()?;
+        let input = self.input(&base, &source, None);
+        let view = &base.views[input.view];
+        let (property, _) = view.group_by.clone()?;
+        let results = views::run(&input).ok()?;
+        let columns = board::columns(view, &results, &self.index.pages);
+        let from = columns.get(column.parse::<usize>().ok()?)?.group.clone();
+        let page = self.index.pages.iter().position(|p| p.rel == rel)?;
+        let targets: Vec<Option<String>> = columns
+            .iter()
+            .map(|c| c.group.clone())
+            .filter(|g| *g != from)
+            .collect();
+        let name = self.index.pages[page].name.clone();
+        let mut items = vec![format!("Open {name}")];
+        items.extend(
+            targets
+                .iter()
+                .map(|g| format!("Move to {}", g.as_deref().unwrap_or(board::NONE))),
+        );
+        self.card_menu = Some((page, property, from, targets));
+        Some(Effect::Ask(vec![Question::Choose {
+            prompt: format!("Bases: {name}"),
+            items,
+        }]))
+    }
+
+    /// The Group menu's commands: add a group, show or hide one, reorder.
+    fn group_command(&mut self, id: &str, ctx: &Context) -> Effect {
+        let menu = match self.groups_here(ctx) {
+            Ok(m) => m,
+            Err(e) => return e,
+        };
+        let label = |g: &Option<String>| g.as_deref().unwrap_or(board::NONE).to_string();
+        let question = match id {
+            "add-group" => Question::Text {
+                prompt: "Bases: the new group's name".into(),
+                default: String::new(),
+            },
+            "show-hide-group" => Question::Choose {
+                prompt: "Bases: show or hide a group".into(),
+                items: menu
+                    .all
+                    .iter()
+                    .map(|g| {
+                        if menu.shown.contains(g) {
+                            format!("{} (shown)", label(g))
+                        } else {
+                            format!("{} (hidden)", label(g))
+                        }
+                    })
+                    .collect(),
+            },
+            _ => Question::Choose {
+                prompt: "Bases: move which group?".into(),
+                items: menu.shown.iter().map(label).collect(),
+            },
+        };
+        self.group_menu = Some(menu);
+        Effect::Ask(vec![question])
+    }
+
+    /// A Group menu's answer: the new `groupOrder` written, or the next
+    /// question (where a group moves to).
+    fn group_answer(&mut self, id: &str, answers: &[Answer], ctx: &Context) -> Effect {
+        let Some(mut menu) = self.group_menu.take() else {
+            return Effect::None;
+        };
+        let label = |g: &Option<String>| g.as_deref().unwrap_or(board::NONE).to_string();
+        let order = match (id, answers, menu.moving.take()) {
+            ("add-group", [Answer::Text(name)], _) => {
+                let name = name.trim();
+                if name.is_empty() {
+                    return Effect::None;
+                }
+                let mut order = menu.shown.clone();
+                order.push(Some(name.to_string()));
+                order
+            }
+            ("show-hide-group", [Answer::Choice(i)], _) => {
+                let Some(g) = menu.all.get(*i).cloned() else {
+                    return Effect::None;
+                };
+                let mut order = menu.shown.clone();
+                match order.iter().position(|s| *s == g) {
+                    Some(at) => {
+                        order.remove(at);
+                    }
+                    None => order.push(g),
+                }
+                order
+            }
+            ("reorder-groups", [Answer::Choice(i)], None) => {
+                let Some(g) = menu.shown.get(*i).cloned() else {
+                    return Effect::None;
+                };
+                let others: Vec<Option<String>> =
+                    menu.shown.iter().filter(|s| **s != g).cloned().collect();
+                let mut items = vec!["First".to_string()];
+                items.extend(others.iter().map(|o| format!("After {}", label(o))));
+                menu.moving = Some(g.clone());
+                self.group_menu = Some(menu);
+                return Effect::Ask(vec![Question::Choose {
+                    prompt: format!("Bases: move {} to", label(&g)),
+                    items,
+                }]);
+            }
+            ("reorder-groups", [Answer::Choice(i)], Some(g)) => {
+                let mut order: Vec<Option<String>> =
+                    menu.shown.iter().filter(|s| **s != g).cloned().collect();
+                order.insert((*i).min(order.len()), g);
+                order
+            }
+            _ => return Effect::None,
+        };
+        self.rewrite(ctx, &edit::Change::GroupOrder(Some(order)))
     }
 
     /// The view shown for `source`.
@@ -983,6 +1191,9 @@ impl Plugin for Bases {
             PluginCommand::new("column-left", "Move column left"),
             PluginCommand::new("new-in-column", "New note in this column"),
             PluginCommand::new("collapse-column", "Collapse or expand column"),
+            PluginCommand::new("reorder-groups", "Reorder groups"),
+            PluginCommand::new("show-hide-group", "Show or hide a group"),
+            PluginCommand::new("add-group", "Add a group"),
             PluginCommand::new("toggle-filters", "Show or hide filters").keys("Alt+F"),
             PluginCommand::new("filters-size", "Change filters size").keys("Alt+M"),
         ]
@@ -1034,6 +1245,9 @@ impl Plugin for Bases {
     }
 
     fn run(&mut self, id: &str, ctx: &Context) -> Effect {
+        if matches!(id, "add-group" | "show-hide-group" | "reorder-groups") {
+            return self.group_command(id, ctx);
+        }
         let on_board = match id {
             "card-next-column" => Some(BoardAction::MoveCard(1)),
             "card-previous-column" => Some(BoardAction::MoveCard(-1)),
@@ -1079,6 +1293,11 @@ impl Plugin for Bases {
     /// A row's menu (a click or Enter): open the note, or change one of
     /// the view's properties (a checkbox at once, others asked).
     fn row_action(&mut self, payload: &str, _ctx: &Context) -> Effect {
+        if payload.starts_with("group:") || payload.starts_with("card:") {
+            return self
+                .base_action(payload)
+                .unwrap_or_else(|| Effect::Message("Bases: that base changed; try again".into()));
+        }
         let Some((props, rel)) = payload.strip_prefix("row:").and_then(|r| r.split_once(':'))
         else {
             return Effect::None;
@@ -1115,6 +1334,26 @@ impl Plugin for Bases {
     }
 
     fn answer(&mut self, id: &str, answers: &[Answer], ctx: &Context) -> Effect {
+        if matches!(id, "add-group" | "show-hide-group" | "reorder-groups") {
+            return self.group_answer(id, answers, ctx);
+        }
+        // A board card's menu: open it, or move it to a column.
+        if let (Some((page, property, from, targets)), [Answer::Choice(i)]) =
+            (self.card_menu.take(), answers)
+        {
+            return match i.checked_sub(1) {
+                None => Effect::Open {
+                    path: self.index.pages[page].path.clone(),
+                },
+                Some(t) => match targets.get(t) {
+                    Some(to) => {
+                        self.cache.borrow_mut().clear();
+                        self.move_card(page, &property, from.as_deref(), to.as_deref())
+                    }
+                    None => Effect::None,
+                },
+            };
+        }
         match (id, answers) {
             (
                 "sort-view" | "group-view" | "set-limit" | "view-properties" | "add-filter"
@@ -1179,7 +1418,7 @@ impl Plugin for Bases {
         from: Option<&Path>,
         width: usize,
     ) -> Vec<Line<'static>> {
-        self.render_block_rows(lang, source, from, width)
+        self.render_block_cells(lang, source, from, width)
             .into_iter()
             .map(|(line, _)| line)
             .collect()
@@ -1187,20 +1426,40 @@ impl Plugin for Bases {
 
     fn render_block_rows(
         &self,
-        _lang: &str,
+        lang: &str,
         source: &[String],
         from: Option<&Path>,
         width: usize,
     ) -> Vec<(Line<'static>, Option<String>)> {
+        // A row's first action, for view mode.
+        self.render_block_cells(lang, source, from, width)
+            .into_iter()
+            .map(|(line, parts)| (line, parts.into_iter().next().map(|(.., a)| a)))
+            .collect()
+    }
+
+    fn render_block_cells(
+        &self,
+        _lang: &str,
+        source: &[String],
+        from: Option<&Path>,
+        width: usize,
+    ) -> Vec<mdedit::processor::CellRow> {
         let text = source.join("\n");
         let view = self.chosen.get(&text).copied().unwrap_or(0);
         let search = self.search.get(&text).cloned().unwrap_or_default();
+        // Collapsed groups change what's drawn.
+        let collapsed = self
+            .collapsed
+            .get(&text)
+            .map(|c| c.join("\u{1f}"))
+            .unwrap_or_default();
         let key = (
             text.clone(),
             from.map(Path::to_path_buf),
             width,
             view,
-            search,
+            format!("{search}\u{1e}{collapsed}"),
         );
         if let Some(rows) = self.cache.borrow().get(&key) {
             return rows.clone();

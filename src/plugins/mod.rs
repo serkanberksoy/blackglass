@@ -12,6 +12,7 @@ pub mod citations;
 pub mod dataview;
 pub mod emoji;
 pub mod encrypt;
+pub mod freeze;
 pub mod git;
 pub mod js;
 pub mod mermaid;

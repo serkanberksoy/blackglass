@@ -34,6 +34,19 @@ What the YAML says:
   own keys; the original app ignores them). Colors: red, orange, yellow, green,
   blue, purple, pink, cyan, gray. Here a formula colors urgent cards red.
 
-The board embedded:
+The board embedded: click a card for its menu (open it, or move it to
+another column), a column's heading to fold it.
 
 ![[Plugins/Bases/Projects.base]]
+
+## Groups, in every layout
+
+A table, a list or cards grouped by a property (`groupBy`) follow the same
+`groupOrder` as the board: its order, the groups it leaves out hidden, an
+empty group for one no note has yet. A click on a group's heading folds
+it. With the cursor in a base (or on a `.base` page), from the palette:
+
+- **Bases: Reorder groups**: a group, then where it goes;
+- **Bases: Show or hide a group**: shown ones are hidden, hidden ones come
+  back;
+- **Bases: Add a group**: a new, empty group (a column on a board).

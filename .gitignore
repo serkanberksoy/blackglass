@@ -15,3 +15,6 @@
 
 # The notes you visited in the example vault (the Recent Files plugin)
 /example_vault/.blackglass/plugins/recent-files/recent.toml
+
+# Notes deleted in the example vault (blackglass moves them here)
+/example_vault/.trash/

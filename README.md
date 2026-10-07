@@ -27,7 +27,7 @@ tenth of a second.
 
 <p align="center"><em>Go to a note by typing part of its name, add a task with an estimate and a date in words, and watch the query results add it up.</em></p>
 
-**Version:** 1.0.2 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
+**Version:** 1.3.0 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
 
 ## Contents
 
@@ -107,7 +107,8 @@ says what each one does.
 
 - **Tasks:** due, scheduled and start dates, priorities, recurrence,
   dependencies, estimates; `tasks` queries across the vault; a window
-  with every field (Alt+T) and a quick task into today's note (Ctrl+T).
+  with every field (Alt+T) and a quick task into today's note (Ctrl+T);
+  a task checked in a query's results stays a moment, to click again.
 
 <p>
   <img src="documentation/images/detail-tasks.png" alt="Tasks with priorities, due, scheduled and start dates, recurrence and dependencies" width="420">

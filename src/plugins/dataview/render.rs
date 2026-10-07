@@ -106,6 +106,24 @@ pub fn whole_rows(rows: Vec<(Line<'static>, Option<String>)>) -> Vec<mdedit::pro
 pub fn cells(results: &Results, width: usize, d: &Display) -> Vec<mdedit::processor::CellRow> {
     match results {
         Results::Calendar(days) if !days.is_empty() => calendar(days),
+        // A task: only its box checks it (as in Dataview); the page's
+        // heading opens the page.
+        Results::Tasks(_) => rows(results, width, d)
+            .into_iter()
+            .map(|(line, action)| {
+                let mark = line
+                    .spans
+                    .first()
+                    .and_then(|s| s.content.strip_prefix("  "))
+                    .map(|m| m.trim_end().width());
+                let parts = match (action, mark) {
+                    (Some(a), Some(w)) if w > 0 => vec![(2, 2 + w, a)],
+                    (Some(a), _) => vec![(0, usize::MAX, a)],
+                    (None, _) => Vec::new(),
+                };
+                (line, parts)
+            })
+            .collect(),
         _ => whole_rows(rows(results, width, d)),
     }
 }

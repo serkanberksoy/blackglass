@@ -288,31 +288,6 @@ for (const [name, cmd] of __data.commands) {
     return out === undefined ? "" : out;
   };
 }
-function __dur(n, unit) {
-  n = Number(n);
-  const sign = n < 0 ? "-" : "", a = Math.abs(n), u = String(unit || "days");
-  if (u === "M" || /^months?$/i.test(u)) return `${sign}P${a}M`;
-  if (/^(y|years?)$/i.test(u)) return `${sign}P${a}Y`;
-  if (/^(w|weeks?)$/i.test(u)) return `${sign}P${a}W`;
-  if (/^(h|hours?)$/i.test(u)) return `${sign}PT${a}H`;
-  if (u === "m" || /^minutes?$/i.test(u)) return `${sign}PT${a}M`;
-  if (/^(s|seconds?)$/i.test(u)) return `${sign}PT${a}S`;
-  return `${sign}P${a}D`;
-}
-function moment(input, format) {
-  const iso = input === undefined ? __data.now
-    : (input && input.__iso) ? input.__iso
-    : format ? __parse(String(input), format) : String(input);
-  return {
-    __iso: iso,
-    format(f = "YYYY-MM-DDTHH:mm:ss") { return __fmt(this.__iso, f); },
-    add(n, unit) { return moment(__shift(this.__iso, __dur(n, unit))); },
-    subtract(n, unit) { return moment(__shift(this.__iso, __dur(-n, unit))); },
-    clone() { return moment(this.__iso); },
-    isValid() { return !!this.__iso; },
-    toString() { return this.format(); },
-  };
-}
 "##;
 
 /// A template run as JavaScript.
@@ -443,7 +418,7 @@ pub(super) fn render(pieces: &[Piece], env: &Env) -> Result<Rendered, String> {
         ));
     }
     let script = format!(
-        "const __data = JSON.parse({data});\n{PRELUDE}\n{scripts}\n(async () => {{\nlet tR = \"\";\n{body}\
+        "const __data = JSON.parse({data});\n{PRELUDE}\n{moment}\n{scripts}\n(async () => {{\nlet tR = \"\";\n{body}\
          const __text = tR;\n\
          for (const hook of __hooks) await hook();\n\
          globalThis.__result = JSON.stringify({{ text: __text, asked: __asked, cursors: __cursors, needs: __needs, actions: __actions }});\n\
@@ -452,6 +427,7 @@ pub(super) fn render(pieces: &[Piece], env: &Env) -> Result<Rendered, String> {
            else globalThis.__error = String(e);\n\
          }});",
         data = js::literal(&data.to_string()),
+        moment = js::MOMENT,
         body = body(pieces),
     );
     let natives: [js::Native; 2] = [("__compile", 1, compile), ("__section", 2, section)];

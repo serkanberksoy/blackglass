@@ -21,8 +21,14 @@ fn accent() -> Style {
 }
 const ERROR: Style = Style::new().fg(Color::LightRed);
 
-/// A drawn line and its action (`open:<path>`).
-pub type Row = (Line<'static>, Option<String>);
+/// A drawn line and the actions on its parts: a row's menu, a group's
+/// heading (collapse it), a board's card (open or move it).
+pub type Row = mdedit::processor::CellRow;
+
+/// An action on the whole row (none: no parts).
+fn whole(action: Option<String>) -> Vec<mdedit::processor::Part> {
+    action.map(|a| vec![(0, usize::MAX, a)]).unwrap_or_default()
+}
 
 /// What a view runs on.
 pub struct Input<'a> {
@@ -35,8 +41,11 @@ pub struct Input<'a> {
     pub search: Option<&'a str>,
     /// A board's selected card: (column, card), on a `.base` page.
     pub selected: Option<(usize, usize)>,
-    /// A board's collapsed columns (their labels).
+    /// A board's collapsed columns, other layouts' collapsed groups
+    /// (their labels).
     pub collapsed: &'a [String],
+    /// The base's tag in actions (`plugin:bases:group:<tag>:<label>`).
+    pub tag: String,
 }
 
 /// A view's results: the notes, and their column values.
@@ -209,7 +218,7 @@ pub fn run(input: &Input) -> Result<Results, String> {
 
 /// The error lines for `message`.
 pub fn error(message: &str) -> Vec<Row> {
-    vec![(Line::styled(format!("Bases: {message}"), ERROR), None)]
+    vec![(Line::styled(format!("Bases: {message}"), ERROR), Vec::new())]
 }
 
 /// Draws the view in `width` columns.
@@ -257,7 +266,7 @@ fn header(base: &Base, shown: usize, count: usize, search: Option<&str>) -> Row 
     if let Some(q) = search.filter(|q| !q.is_empty()) {
         spans.push(Span::styled(format!("   search: {q}"), DIM));
     }
-    (Line::from(spans), None)
+    (Line::from(spans), Vec::new())
 }
 
 /// A row's action: its menu, with the view's note properties to change.
@@ -299,26 +308,32 @@ fn fit(text: &str, width: usize) -> String {
     format!("{out}{}", " ".repeat(width.saturating_sub(out.width())))
 }
 
-/// The row indexes in each group, in order: (group value, rows).
-pub(super) fn grouped(results: &Results) -> Vec<(Option<Value>, Vec<usize>)> {
-    let mut out: Vec<(Option<Value>, Vec<usize>)> = Vec::new();
-    for (r, g) in results.groups.iter().enumerate() {
-        match out.last_mut() {
-            Some((last, rows)) if last == g => rows.push(r),
-            _ => out.push((g.clone(), vec![r])),
-        }
+/// A view's groups in order, as the board makes them (`groupOrder`'s
+/// order and hidden groups, notes without a value in "None"): (label,
+/// rows); one group without a label when the view isn't grouped.
+fn sections(input: &Input, view: &View, results: &Results) -> Vec<(Option<String>, Vec<usize>)> {
+    if view.group_by.is_none() {
+        return vec![(None, (0..results.rows.len()).collect())];
     }
-    if out.is_empty() {
-        out.push((None, Vec::new()));
-    }
-    out
+    super::board::columns(view, results, input.pages)
+        .into_iter()
+        .map(|c| (Some(c.label().to_string()), c.cards))
+        .collect()
 }
 
-fn group_name(g: &Value, pages: &[Page]) -> String {
-    match g.display(pages) {
-        s if s.is_empty() => "(empty)".into(),
-        s => s,
-    }
+/// A group's heading (▾ open, ▸ collapsed), which collapses or expands
+/// it; whether it's collapsed.
+fn group_heading(input: &Input, label: &str, count: usize) -> (Row, bool) {
+    let collapsed = input.collapsed.iter().any(|l| l == label);
+    let marker = if collapsed { "▸" } else { "▾" };
+    let action = format!("plugin:bases:group:{}:{label}", input.tag);
+    (
+        (
+            Line::styled(format!("{marker} {label} ({count})"), accent()),
+            vec![(0, usize::MAX, action)],
+        ),
+        collapsed,
+    )
 }
 
 /// A built-in or custom summary of `values`.
@@ -433,7 +448,7 @@ fn table(input: &Input, view: &View, results: &Results, width: usize) -> Result<
         .iter()
         .map(|row| row.iter().map(|v| v.display(pages)).collect())
         .collect();
-    let groups = grouped(results);
+    let groups = sections(input, view, results);
     let mut sums = Vec::new();
     for (_, rows) in &groups {
         sums.push(summaries(input, view, results, rows)?);
@@ -478,27 +493,30 @@ fn table(input: &Input, view: &View, results: &Results, width: usize) -> Result<
     let headers: Vec<String> = results.columns.iter().map(|(_, h)| h.clone()).collect();
     let mut out: Vec<Row> = vec![(
         Line::styled(line(&headers), Style::new().add_modifier(Modifier::BOLD)),
-        None,
+        Vec::new(),
     )];
     let rule: Vec<String> = widths.iter().map(|w| "─".repeat(*w)).collect();
-    out.push((Line::styled(rule.join("─┼─"), DIM), None));
+    out.push((Line::styled(rule.join("─┼─"), DIM), Vec::new()));
     for ((g, rows), sum) in groups.iter().zip(&sums) {
-        if let Some(g) = g {
-            let heading = format!("{} ({})", group_name(g, pages), rows.len());
-            out.push((Line::styled(heading, accent()), None));
+        if let Some(label) = g {
+            let (heading, collapsed) = group_heading(input, label, rows.len());
+            out.push(heading);
+            if collapsed {
+                continue;
+            }
         }
         for &r in rows {
             out.push((
                 Line::raw(line(&text[r])),
-                open(&pages[results.rows[r]], &props),
+                whole(open(&pages[results.rows[r]], &props)),
             ));
         }
         if let Some(sum) = sum {
-            out.push((Line::styled(line(sum), DIM), None));
+            out.push((Line::styled(line(sum), DIM), Vec::new()));
         }
     }
     if let Some(total) = total {
-        out.push((Line::styled(line(&total), DIM), None));
+        out.push((Line::styled(line(&total), DIM), Vec::new()));
     }
     Ok(out)
 }
@@ -528,15 +546,13 @@ fn list(input: &Input, view: &View, results: &Results) -> Result<Vec<Row>, Strin
     let separator = view.option("separator").unwrap_or(", ");
     let indent = view.option("indentProperties") == Some("true");
     let mut out = Vec::new();
-    for (g, rows) in grouped(results) {
-        if let Some(g) = &g {
-            out.push((
-                Line::styled(
-                    format!("{} ({})", group_name(g, pages), rows.len()),
-                    accent(),
-                ),
-                None,
-            ));
+    for (g, rows) in sections(input, view, results) {
+        if let Some(label) = &g {
+            let (heading, collapsed) = group_heading(input, label, rows.len());
+            out.push(heading);
+            if collapsed {
+                continue;
+            }
         }
         for (n, &r) in rows.iter().enumerate() {
             let marker = match view.option("markers") {
@@ -544,7 +560,7 @@ fn list(input: &Input, view: &View, results: &Results) -> Result<Vec<Row>, Strin
                 Some("none") => String::new(),
                 _ => "• ".into(),
             };
-            let action = open(&pages[results.rows[r]], &props);
+            let action = whole(open(&pages[results.rows[r]], &props));
             let values: Vec<String> = details(results, r, pages)
                 .into_iter()
                 .map(|(_, v)| v)
@@ -592,15 +608,13 @@ fn cards(input: &Input, view: &View, results: &Results, width: usize) -> Result<
         .clamp(8, width.saturating_sub(4).max(8));
     let per_line = (width / (size + 5)).max(1);
     let mut out = Vec::new();
-    for (g, rows) in grouped(results) {
-        if let Some(g) = &g {
-            out.push((
-                Line::styled(
-                    format!("{} ({})", group_name(g, pages), rows.len()),
-                    accent(),
-                ),
-                None,
-            ));
+    for (g, rows) in sections(input, view, results) {
+        if let Some(label) = &g {
+            let (heading, collapsed) = group_heading(input, label, rows.len());
+            out.push(heading);
+            if collapsed {
+                continue;
+            }
         }
         for chunk in rows.chunks(per_line) {
             let drawn: Vec<Vec<String>> = chunk
@@ -608,10 +622,15 @@ fn cards(input: &Input, view: &View, results: &Results, width: usize) -> Result<
                 .map(|&r| card(results, r, pages, size))
                 .collect();
             let height = drawn.iter().map(Vec::len).max().unwrap_or(0);
-            // One card per line: its lines open it.
-            let action = (chunk.len() == 1)
-                .then(|| open(&pages[results.rows[chunk[0]]], &props))
-                .flatten();
+            // Each card's columns open its menu.
+            let actions: Vec<mdedit::processor::Part> = chunk
+                .iter()
+                .enumerate()
+                .filter_map(|(i, &r)| {
+                    let from = i * (size + 5);
+                    open(&pages[results.rows[r]], &props).map(|a| (from, from + size + 4, a))
+                })
+                .collect();
             for i in 0..height {
                 let parts: Vec<String> = drawn
                     .iter()
@@ -619,7 +638,7 @@ fn cards(input: &Input, view: &View, results: &Results, width: usize) -> Result<
                     .collect();
                 out.push((
                     Line::raw(parts.join(" ").trim_end().to_string()),
-                    action.clone(),
+                    actions.clone(),
                 ));
             }
         }
@@ -649,6 +668,8 @@ fn kanban(input: &Input, view: &View, results: &Results, width: usize) -> Result
     };
     let selected_bg = crate::ui::theme::paint(crate::ui::theme::BG_SELECTED);
     let mut drawn: Vec<Vec<Vec<Span<'static>>>> = Vec::new();
+    // The actions on each column's lines: (column, line) → action.
+    let mut acts: Vec<Vec<Option<String>>> = Vec::new();
     for (c, column) in columns.iter().enumerate() {
         let tint = column.color.map_or_else(accent, |color| {
             Style::new().fg(color).add_modifier(Modifier::BOLD)
@@ -667,8 +688,17 @@ fn kanban(input: &Input, view: &View, results: &Results, width: usize) -> Result
                 column.color.map_or(DIM, |c| Style::new().fg(c)),
             )],
         ];
+        let mut col_acts = vec![
+            Some(format!(
+                "plugin:bases:group:{}:{}",
+                input.tag,
+                column.label()
+            )),
+            None,
+        ];
         if collapsed {
             drawn.push(lines);
+            acts.push(col_acts);
             continue;
         }
         for (k, &r) in column.cards.iter().enumerate() {
@@ -693,13 +723,19 @@ fn kanban(input: &Input, view: &View, results: &Results, width: usize) -> Result
                     title_style,
                 ),
             ]);
+            col_acts.push(Some(format!(
+                "plugin:bases:card:{}:{c}:{}",
+                input.tag, pages[results.rows[r]].rel
+            )));
             for (_, v) in details(results, r, pages) {
                 if Some(v.as_str()) != column.group.as_deref() {
                     lines.push(vec![Span::raw(fit(&format!("  {v}"), w))]);
+                    col_acts.push(None);
                 }
             }
         }
         drawn.push(lines);
+        acts.push(col_acts);
     }
     let height = drawn.iter().map(Vec::len).max().unwrap_or(0);
     let mut out = Vec::new();
@@ -724,7 +760,16 @@ fn kanban(input: &Input, view: &View, results: &Results, width: usize) -> Result
         if let Some(last) = spans.last_mut().filter(|s| s.style.bg.is_none()) {
             last.content = last.content.trim_end().to_string().into();
         }
-        out.push((Line::from(spans), None));
+        // Each column's part of the line: its heading, a card's title.
+        let parts = acts
+            .iter()
+            .enumerate()
+            .filter_map(|(c, col)| {
+                let from = c * (w + 3);
+                col.get(i).cloned().flatten().map(|a| (from, from + w, a))
+            })
+            .collect();
+        out.push((Line::from(spans), parts));
     }
     Ok(out)
 }

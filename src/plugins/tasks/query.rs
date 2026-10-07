@@ -29,6 +29,9 @@ pub struct Query {
     pub ignore_global: bool,
     /// The instructions as written, for `explain`.
     pub lines: Vec<String>,
+    /// The JavaScript of its `… by function` instructions, in order
+    /// (`Filter::Function` and `Key::Function` are indexes into it).
+    pub functions: Vec<String>,
 }
 
 /// A filter.
@@ -57,6 +60,8 @@ pub enum Filter {
     And(Box<Filter>, Box<Filter>),
     Or(Box<Filter>, Box<Filter>),
     Xor(Box<Filter>, Box<Filter>),
+    /// `filter by function …`: the query's function `.0` is true.
+    Function(usize, String),
 }
 
 /// `includes X` / `does not include X` / `is X` / `is not X` (without
@@ -143,6 +148,8 @@ pub enum Compare {
 /// What results are sorted or grouped by.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
+    /// `sort by function` / `group by function`: the query's function.
+    Function(usize),
     Status,
     StatusName,
     StatusType,
@@ -170,6 +177,8 @@ pub struct Env<'a> {
     pub open_ids: &'a HashSet<String>,
     /// Ids that open tasks depend on (for "blocking").
     pub depended_on: &'a HashSet<String>,
+    /// The query's functions, worked out for every task.
+    pub functions: Option<&'a super::function::Computed>,
 }
 
 /// Parses a query block (and the global query's lines before it, unless
@@ -205,6 +214,31 @@ pub fn parse(text: &str, global: &str, today: NaiveDate) -> Result<Query, String
 
 fn instruction(q: &mut Query, line: &str, today: NaiveDate) -> Result<(), String> {
     let lower = line.to_lowercase();
+    // `… by function [reverse] <JavaScript>` (the code as written).
+    for start in [
+        "filter by function ",
+        "sort by function ",
+        "group by function ",
+    ] {
+        if lower.starts_with(start) {
+            let code = line[start.len()..].trim();
+            let (reverse, code) = match code.strip_prefix("reverse ") {
+                Some(rest) if !start.starts_with("filter") => (true, rest.trim()),
+                _ => (false, code),
+            };
+            if code.is_empty() {
+                return Err("a function needs its JavaScript".into());
+            }
+            let i = q.functions.len();
+            q.functions.push(code.to_string());
+            match start {
+                "filter by function " => q.filters.push(Filter::Function(i, code.to_string())),
+                "sort by function " => q.sorts.push((Key::Function(i), reverse)),
+                _ => q.groups.push((Key::Function(i), reverse)),
+            }
+            return Ok(());
+        }
+    }
     if let Some(rest) = lower.strip_prefix("sort by ") {
         q.sorts.push(key_with_reverse(rest)?);
         return Ok(());
@@ -788,6 +822,9 @@ impl Filter {
     pub fn matches(&self, t: &Task, env: &Env) -> bool {
         let status = env.statuses.get(t.status);
         match self {
+            Filter::Function(i, _) => env
+                .functions
+                .is_none_or(|c| super::function::truthy(c.get(t, *i))),
             Filter::Done(done) => {
                 matches!(status.kind, Type::Done | Type::Cancelled | Type::NonTask) == *done
             }
@@ -873,6 +910,7 @@ impl Filter {
             format!("{verb} {}", t.text)
         };
         match self {
+            Filter::Function(_, code) => format!("filter by function {code}"),
             Filter::Done(true) => "done".into(),
             Filter::Done(false) => "not done".into(),
             Filter::StatusName(t) => format!("status.name {}", text(t)),
@@ -1035,6 +1073,7 @@ mod tests {
             statuses: &statuses,
             open_ids: &none,
             depended_on: &none,
+            functions: None,
         };
         let task = |line: &str, path: &str| {
             let mut t = Task::parse(line).unwrap();
@@ -1112,6 +1151,7 @@ mod tests {
             statuses: &statuses,
             open_ids: &none,
             depended_on: &none,
+            functions: None,
         };
         let task = |line: &str, path: &str| {
             let mut t = Task::parse(line).unwrap();

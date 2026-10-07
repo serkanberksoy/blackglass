@@ -56,6 +56,10 @@ pub struct Dataview {
     inline: RefCell<HashMap<InlineKey, Option<String>>>,
     /// A calendar day's notes, while "which one?" is asked.
     picking: Vec<String>,
+    /// Results kept as drawn for a moment after a task is checked in them.
+    frozen: super::freeze::Frozen<(String, Option<PathBuf>, usize)>,
+    /// How long (a setting).
+    keep_checked: std::time::Duration,
 }
 
 /// An inline query's code and the note it's shown in.
@@ -159,6 +163,15 @@ impl Plugin for Dataview {
         }
     }
 
+    fn tick(&mut self, _ctx: &Context) -> Effect {
+        // Checked results held long enough: drawn anew.
+        if self.frozen.expire() {
+            self.cache.borrow_mut().clear();
+            return Effect::Redraw;
+        }
+        Effect::None
+    }
+
     fn row_action(&mut self, payload: &str, _ctx: &Context) -> Effect {
         // `pick:<path>\t<path>…`: a calendar day's notes; which one?
         if let Some(rels) = payload.strip_prefix("pick:") {
@@ -198,13 +211,26 @@ impl Plugin for Dataview {
             return Effect::None;
         };
         match toggled(&old, self.completion_tracking) {
-            Some(new) => Effect::EditNote {
-                path: page.path.clone(),
-                from: line,
-                to: line + 1,
-                lines: vec![new],
-                expect: vec![old],
-            },
+            Some(new) => {
+                // Its row stays, in its new state, for a moment.
+                let status = new
+                    .find('[')
+                    .and_then(|i| new[i + 1..].chars().next())
+                    .unwrap_or(' ');
+                self.frozen.hold(
+                    &self.cache.borrow(),
+                    &format!("plugin:dataview:{payload}"),
+                    status,
+                    self.keep_checked,
+                );
+                Effect::EditNote {
+                    path: page.path.clone(),
+                    from: line,
+                    to: line + 1,
+                    lines: vec![new],
+                    expect: vec![old],
+                }
+            }
             None => Effect::Message("Dataview: that line isn't a task any more".into()),
         }
     }
@@ -228,10 +254,12 @@ impl Plugin for Dataview {
             javascript,
             task_click,
             tracking,
+            keep,
         ] = &self.settings()[..]
         else {
-            unreachable!("Dataview has seven settings");
+            unreachable!("Dataview has eight settings");
         };
+        self.keep_checked = super::freeze::seconds(&values.value(keep));
         self.javascript = values.value(javascript) == "true";
         self.completion_tracking = values.value(tracking) == "true";
         self.display = render::Display {
@@ -303,6 +331,14 @@ impl Plugin for Dataview {
             "Checking a task off in results adds ✅ and today's date (unchecking takes it off)",
             Kind::Toggle,
             "false",
+        ));
+        all.push(Setting::new(
+            "",
+            "keep_checked",
+            "Checked tasks stay (seconds)",
+            "A task checked in TASK results stays shown this long, to click again (0 to 10)",
+            Kind::Text,
+            super::freeze::DEFAULT,
         ));
         all
     }
@@ -382,6 +418,9 @@ impl Plugin for Dataview {
             from.map(Path::to_path_buf),
             width,
         );
+        if let Some(lines) = self.frozen.get(&key) {
+            return lines;
+        }
         if let Some(lines) = self.cache.borrow().get(&key) {
             return lines.clone();
         }

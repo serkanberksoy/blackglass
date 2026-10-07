@@ -68,6 +68,79 @@ pub fn run(script: &str, natives: &[Native]) -> Result<String, String> {
     global("__result", &mut ctx).ok_or_else(|| "the script ended without a result".into())
 }
 
+/// moment.js as scripts use it (Templater's `moment()`, Tasks' dates):
+/// made from a date (`YYYY-MM-DD[THH:MM:SS]`), another moment, text and
+/// a format, or nothing (now: the script's `__data.now` if it has one);
+/// `format`, `add` / `subtract`, comparisons (`isBefore`, `isAfter`,
+/// `isSame`, `isSameOrBefore`, `isSameOrAfter`, to a unit: `"day"`,
+/// `"month"`, `"year"`), `diff`, `startOf` and the parts of the date.
+pub const MOMENT: &str = r#"
+function __dur(n, unit) {
+  n = Number(n);
+  const sign = n < 0 ? "-" : "", a = Math.abs(n), u = String(unit || "days");
+  if (u === "M" || /^months?$/i.test(u)) return `${sign}P${a}M`;
+  if (/^(y|years?)$/i.test(u)) return `${sign}P${a}Y`;
+  if (/^(w|weeks?)$/i.test(u)) return `${sign}P${a}W`;
+  if (/^(h|hours?)$/i.test(u)) return `${sign}PT${a}H`;
+  if (u === "m" || /^minutes?$/i.test(u)) return `${sign}PT${a}M`;
+  if (/^(s|seconds?)$/i.test(u)) return `${sign}PT${a}S`;
+  return `${sign}P${a}D`;
+}
+function __unitLength(unit) {
+  const u = String(unit || "");
+  if (/^(y|years?)$/i.test(u)) return 4;
+  if (u === "M" || /^months?$/i.test(u)) return 7;
+  if (/^(d|days?|date)$/i.test(u)) return 10;
+  return 19;
+}
+function __cmp(a, b, unit) {
+  const n = __unitLength(unit);
+  const x = String(a.__iso || "").padEnd(19, "0").slice(0, n);
+  const y = String(moment(b).__iso || "").padEnd(19, "0").slice(0, n);
+  return x < y ? -1 : x > y ? 1 : 0;
+}
+function moment(input, format) {
+  // A script's own "now" (`const __data`, a template's) is no property of
+  // the global object.
+  const now = () => (typeof __data !== "undefined" && __data.now) ? __data.now : __now();
+  const iso = input === undefined ? now()
+    : input === null ? null
+    : (input && input.__iso !== undefined) ? input.__iso
+    : format ? __parse(String(input), format) : String(input);
+  return {
+    __iso: iso,
+    format(f = "YYYY-MM-DDTHH:mm:ss") { return __fmt(this.__iso, f); },
+    add(n, unit) { return moment(__shift(this.__iso, __dur(n, unit))); },
+    subtract(n, unit) { return moment(__shift(this.__iso, __dur(-n, unit))); },
+    clone() { return moment(this.__iso); },
+    isValid() { return !!this.__iso; },
+    isBefore(o, unit) { return __cmp(this, o, unit) < 0; },
+    isAfter(o, unit) { return __cmp(this, o, unit) > 0; },
+    isSame(o, unit) { return __cmp(this, o, unit) === 0; },
+    isSameOrBefore(o, unit) { return __cmp(this, o, unit) <= 0; },
+    isSameOrAfter(o, unit) { return __cmp(this, o, unit) >= 0; },
+    diff(o, unit) {
+      const ms = new Date(this.__iso) - new Date(moment(o).__iso);
+      const per = { y: 31536e6, M: 2592e6, w: 6048e5, d: 864e5, h: 36e5, m: 6e4, s: 1e3 };
+      const u = String(unit || "ms");
+      const k = /^years?$/i.test(u) ? "y" : (u === "M" || /^months?$/i.test(u)) ? "M"
+        : /^weeks?$/i.test(u) ? "w" : /^days?$/i.test(u) ? "d" : /^hours?$/i.test(u) ? "h"
+        : (u === "m" || /^minutes?$/i.test(u)) ? "m" : /^seconds?$/i.test(u) ? "s" : u.length === 1 ? u : "";
+      return per[k] ? Math.trunc(ms / per[k]) : ms;
+    },
+    startOf(unit) {
+      const n = __unitLength(unit);
+      return moment((this.__iso || "").slice(0, n) + (n === 4 ? "-01-01" : n === 7 ? "-01" : ""));
+    },
+    year() { return Number(this.format("YYYY")); },
+    month() { return Number(this.format("M")) - 1; },
+    date() { return Number(this.format("D")); },
+    day() { return Number(this.format("d")); },
+    toString() { return this.format(); },
+  };
+}
+"#;
+
 /// A JavaScript string literal for `text` (for putting data in a script).
 pub fn literal(text: &str) -> String {
     serde_json::to_string(text).expect("a string serializes")

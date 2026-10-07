@@ -3991,9 +3991,9 @@ fn tasks_blocks_query_group_and_toggle_from_results() {
         "{text}\n{}",
         app.message
     );
+    // It stays a moment, checked (it's gone after: `a_checked_task_stays_in_its_query_for_a_moment`).
     let rows = screen(&mut app, 110, 30);
-    assert!(find(&rows, "Ship report").is_none(), "{rows:#?}");
-    assert!(find(&rows, "1 task").is_some());
+    assert!(find(&rows, "☑ Ship report").is_some(), "{rows:#?}");
 }
 
 #[test]
@@ -8746,4 +8746,285 @@ fn a_read_only_vault_says_so() {
         "{}",
         writable.message
     );
+}
+
+#[test]
+fn a_tasks_result_checks_on_its_box_and_opens_on_its_backlink() {
+    let mut app = tasks_app(
+        "tasks-box-click",
+        &[
+            ("T.md", "intro\n- [ ] Paint the shed\n"),
+            ("Q.md", "top\n\n```tasks\nnot done\n```\n"),
+        ],
+    );
+    app.open(&note(&app, "Q.md"));
+    let rows = screen(&mut app, 110, 24);
+    let (x, y) = spot(&rows, "☐ Paint the shed");
+    // The description: nothing (the query stays, the task too).
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x + 6, y);
+    assert_eq!(
+        fs::read_to_string(app.vault.root.join("T.md")).unwrap(),
+        "intro\n- [ ] Paint the shed\n"
+    );
+    assert_eq!(app.view().unwrap().editor.row, 0, "the query stays shown");
+    // The backlink: its note, at the task.
+    let rows = screen(&mut app, 110, 24);
+    let (bx, by) = spot(&rows, "(T)");
+    mouse(
+        &mut app,
+        MouseEventKind::Down(MouseButton::Left),
+        bx + 1,
+        by,
+    );
+    assert!(app.view().unwrap().path.as_ref().unwrap().ends_with("T.md"));
+    assert_eq!(app.view().unwrap().editor.row, 1, "at the task");
+    // Back in the query: the box checks it.
+    app.open(&note(&app, "Q.md"));
+    let rows = screen(&mut app, 110, 24);
+    let (x, y) = spot(&rows, "☐ Paint the shed");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x, y);
+    let text = fs::read_to_string(app.vault.root.join("T.md")).unwrap();
+    assert!(text.contains("- [x] Paint the shed"), "{text}");
+}
+
+#[test]
+fn a_dataview_task_checks_on_its_box_only() {
+    let dir = vault(
+        "dataview-box-click",
+        &[
+            (
+                ".blackglass/plugins.toml",
+                "installed = [\"dataview\"]\nenabled = [\"dataview\"]\n",
+            ),
+            ("T.md", "- [ ] Paint the shed\n"),
+            ("Q.md", "top\n\n```dataview\nTASK FROM \"T\"\n```\n"),
+        ],
+    );
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "Q.md"));
+    let rows = screen(&mut app, 100, 20);
+    let (x, y) = spot(&rows, "☐ Paint the shed");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x + 6, y);
+    assert_eq!(
+        fs::read_to_string(dir.join("T.md")).unwrap(),
+        "- [ ] Paint the shed\n",
+        "the text: nothing"
+    );
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x, y);
+    let text = fs::read_to_string(dir.join("T.md")).unwrap();
+    assert!(text.starts_with("- [x] Paint the shed"), "the box: {text}");
+}
+
+#[test]
+fn tasks_queries_filter_sort_and_group_by_function() {
+    let tasks = "- [ ] Tiny\n- [ ] Short one 📅 2026-10-10 #home\n- [ ] A much longer description 📅 2026-10-20 #home\n- [ ] Middle-sized task #work\n";
+    let query = "```tasks\nfilter by function task.description.length > 5\nsort by function reverse task.description.length\ngroup by function task.tags.length ? task.tags[0] : 'No tag'\nhide urgency\n```\n\n```tasks\nfilter by function task.due.moment?.isBefore(moment('2026-10-15'), 'day')\nhide urgency\n```\n\n```tasks\nfilter by function nope(\n```\n";
+    let mut app = tasks_app(
+        "tasks-functions",
+        &[("T.md", tasks), ("Q.md", &format!("top\n\n{query}"))],
+    );
+    app.open(&note(&app, "Q.md"));
+    let rows = screen(&mut app, 120, 40);
+    let at = |text: &str| {
+        rows.iter()
+            .position(|r| r.contains(text))
+            .unwrap_or_else(|| panic!("{text}: {rows:#?}"))
+    };
+    // Grouped by the first tag; longest first in each group; Tiny is out.
+    assert!(at("#home") < at("A much longer description"), "{rows:#?}");
+    assert!(
+        at("A much longer description") < at("Short one"),
+        "{rows:#?}"
+    );
+    assert!(at("#work") > at("Short one") && at("#work") < at("Middle-sized task"));
+    assert!(
+        !rows[..at("#work") + 3].iter().any(|r| r.contains("Tiny")),
+        "{rows:#?}"
+    );
+    // Dates as moments: only the task due before the 15th.
+    let second = &rows[at("3 tasks") + 1..];
+    let due_before: Vec<&String> = second
+        .iter()
+        .take_while(|r| !r.contains("1 task"))
+        .filter(|r| r.contains('☐'))
+        .collect();
+    assert_eq!(due_before.len(), 1, "{rows:#?}");
+    assert!(due_before[0].contains("Short one"), "{rows:#?}");
+    // A broken function says so.
+    let error = rows
+        .iter()
+        .find(|r| r.contains("Tasks query:"))
+        .expect("an error");
+    assert!(
+        error.contains("function") && !error.contains("line 6"),
+        "{error}"
+    );
+}
+
+const GROUPED_TABLE: &str = "top\n```base\nfilters: type == \"book\"\nviews:\n  - type: table\n    name: Shelf\n    order: [file.name, rating]\n    groupBy:\n      property: status\n      direction: ASC\n    groupOrder:\n      - reading\n      - read\n```\nend\n";
+
+fn block_text(app: &App) -> String {
+    app.view().unwrap().editor.to_text()
+}
+
+#[test]
+fn base_groups_follow_their_order_collapse_and_change_by_command() {
+    let mut app = bases_app("bases-groups", &[("G.md", GROUPED_TABLE)]);
+    app.open(&note(&app, "G.md"));
+    let rows = screen(&mut app, 100, 30);
+    let at = |rows: &[String], t: &str| rows.iter().position(|r| r.contains(t));
+    // groupOrder: reading first; every group in it shown.
+    assert!(
+        at(&rows, "reading (1)").unwrap() < at(&rows, "read (2)").unwrap(),
+        "{rows:#?}"
+    );
+    // A click on a group's heading collapses it, again expands it.
+    let (x, y) = spot(&rows, "read (2)");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x + 1, y);
+    let rows = screen(&mut app, 100, 30);
+    assert!(at(&rows, "▸ read (2)").is_some(), "{rows:#?}");
+    assert!(at(&rows, "Hobbit").is_none(), "its rows hidden: {rows:#?}");
+    assert_eq!(app.view().unwrap().editor.row, 0, "the block stays shown");
+    let (x, y) = spot(&rows, "▸ read (2)");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x + 3, y);
+    let rows = screen(&mut app, 100, 30);
+    assert!(at(&rows, "Hobbit").is_some(), "{rows:#?}");
+    // The Group menu, as commands with the cursor in the block.
+    put_cursor(&mut app, 3, 0);
+    run_palette(&mut app, "bases add a group");
+    typing(&mut app, "wishlist");
+    key(&mut app, KeyCode::Enter);
+    assert!(
+        block_text(&app).contains("      - wishlist"),
+        "{}",
+        block_text(&app)
+    );
+    run_palette(&mut app, "bases show or hide a group");
+    typing(&mut app, "reading");
+    key(&mut app, KeyCode::Enter);
+    let text = block_text(&app);
+    assert!(!text.contains("      - reading"), "hidden: {text}");
+    run_palette(&mut app, "bases reorder groups");
+    typing(&mut app, "wishlist");
+    key(&mut app, KeyCode::Enter);
+    typing(&mut app, "first");
+    key(&mut app, KeyCode::Enter);
+    let text = block_text(&app);
+    let wish = text.find("      - wishlist").unwrap();
+    let read = text.find("      - read\n").unwrap();
+    assert!(wish < read, "wishlist first: {text}");
+}
+
+#[test]
+fn a_board_in_a_note_moves_cards_by_click() {
+    let mut app = bases_app(
+        "bases-board-click",
+        &[(
+            "K.md",
+            "top\n```base\nfilters: type == \"book\"\nviews:\n  - type: kanban\n    groupBy: status\n    order: [file.name]\n```\nend\n",
+        )],
+    );
+    app.open(&note(&app, "K.md"));
+    let rows = screen(&mut app, 100, 30);
+    let (x, y) = spot(&rows, "Emma");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x + 1, y);
+    let rows = screen(&mut app, 100, 30).join("\n");
+    assert!(
+        rows.contains("Open Emma") && rows.contains("Move to read"),
+        "{rows}"
+    );
+    typing(&mut app, "move to read");
+    key(&mut app, KeyCode::Enter);
+    let emma = fs::read_to_string(app.vault.root.join("Books/Emma.md")).unwrap();
+    assert!(emma.contains("status: read\n"), "{emma}");
+}
+
+#[test]
+fn a_checked_task_stays_in_its_query_for_a_moment() {
+    let mut app = tasks_app(
+        "tasks-grace",
+        &[
+            ("T.md", "- [ ] Paint the shed\n- [ ] Buy paint\n"),
+            ("Q.md", "top\n\n```tasks\nnot done\nhide urgency\n```\n"),
+        ],
+    );
+    app.open(&note(&app, "Q.md"));
+    let rows = screen(&mut app, 100, 20);
+    let (x, y) = spot(&rows, "☐ Paint the shed");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x, y);
+    app.tick();
+    let rows = screen(&mut app, 100, 20).join("\n");
+    assert!(
+        rows.contains("☑ Paint the shed"),
+        "shown checked, not gone: {rows}"
+    );
+    let path = app.vault.root.join("T.md");
+    let file = || fs::read_to_string(&path).unwrap();
+    assert!(file().starts_with("- [x] Paint the shed"), "{}", file());
+    // Clicked again in time: unchecked.
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x, y);
+    app.tick();
+    assert!(file().starts_with("- [ ] Paint the shed"), "{}", file());
+    let rows = screen(&mut app, 100, 20).join("\n");
+    assert!(rows.contains("☐ Paint the shed"), "{rows}");
+    // Checked, then after a few seconds the query is drawn anew.
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x, y);
+    std::thread::sleep(std::time::Duration::from_millis(3700));
+    app.tick();
+    let rows = screen(&mut app, 100, 20).join("\n");
+    assert!(!rows.contains("Paint the shed"), "gone now: {rows}");
+    assert!(rows.contains("☐ Buy paint"), "{rows}");
+}
+
+#[test]
+fn a_dataview_checked_task_stays_for_a_moment() {
+    let dir = vault(
+        "dataview-grace",
+        &[
+            (
+                ".blackglass/plugins.toml",
+                "installed = [\"dataview\"]\nenabled = [\"dataview\"]\n",
+            ),
+            ("T.md", "- [ ] Paint the shed\n"),
+            (
+                "Q.md",
+                "top\n\n```dataview\nTASK FROM \"T\"\nWHERE !completed\n```\n",
+            ),
+        ],
+    );
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "Q.md"));
+    let rows = screen(&mut app, 100, 20);
+    let (x, y) = spot(&rows, "☐ Paint the shed");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x, y);
+    app.tick();
+    let rows = screen(&mut app, 100, 20).join("\n");
+    assert!(rows.contains("☑ Paint the shed"), "shown checked: {rows}");
+    assert!(
+        fs::read_to_string(dir.join("T.md"))
+            .unwrap()
+            .starts_with("- [x]")
+    );
+}
+
+#[test]
+fn checked_tasks_can_go_at_once() {
+    let mut app = tasks_app(
+        "tasks-grace-off",
+        &[
+            ("T.md", "- [ ] Paint the shed\n- [ ] Buy paint\n"),
+            ("Q.md", "top\n\n```tasks\nnot done\nhide urgency\n```\n"),
+            (
+                ".blackglass/plugins/tasks/settings.toml",
+                "keep_checked = \"0\"\n",
+            ),
+        ],
+    );
+    app.open(&note(&app, "Q.md"));
+    let rows = screen(&mut app, 100, 20);
+    let (x, y) = spot(&rows, "☐ Paint the shed");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x, y);
+    app.tick();
+    let rows = screen(&mut app, 100, 20).join("\n");
+    assert!(!rows.contains("Paint the shed"), "gone at once: {rows}");
 }

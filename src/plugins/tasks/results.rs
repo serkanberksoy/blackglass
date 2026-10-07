@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use chrono::NaiveDate;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
+use unicode_width::UnicodeWidthStr;
 
 use super::query::{DateKey, Env, Key, PathPart, Query, path_part};
 use super::task::{DateField, Priority, Task, Type};
@@ -21,8 +22,9 @@ fn heading_style() -> Style {
         .add_modifier(Modifier::BOLD)
 }
 
-/// A result row: the line and its action.
-pub type Row = (Line<'static>, Option<String>);
+/// A result row: the line and the actions on its parts (a task's box
+/// checks it, its backlink opens its note there).
+pub type Row = mdedit::processor::CellRow;
 
 /// The action a task row runs: toggle it.
 pub fn toggle_action(t: &Task) -> String {
@@ -45,15 +47,15 @@ pub fn run(
     if query.explain {
         out.push((
             Line::styled("Explanation of this Tasks query:", heading_style()),
-            None,
+            Vec::new(),
         ));
         for f in &query.filters {
-            out.push((Line::styled(format!("  {}", f.explain()), DIM), None));
+            out.push((Line::styled(format!("  {}", f.explain()), DIM), Vec::new()));
         }
         if query.filters.is_empty() {
-            out.push((Line::styled("  No filters: every task", DIM), None));
+            out.push((Line::styled("  No filters: every task", DIM), Vec::new()));
         }
-        out.push((Line::default(), None));
+        out.push((Line::default(), Vec::new()));
     }
     let mut found: Vec<&Task> = tasks
         .iter()
@@ -99,7 +101,7 @@ pub fn run(
     }
     if !query.hidden.contains("task count") {
         let noun = if total == 1 { "task" } else { "tasks" };
-        out.push((Line::styled(format!("{total} {noun}"), DIM), None));
+        out.push((Line::styled(format!("{total} {noun}"), DIM), Vec::new()));
     }
     out
 }
@@ -145,7 +147,7 @@ fn grouped(
     });
     for i in order {
         let heading = format!("{}{}", "  ".repeat(level), names[i].1);
-        out.push((Line::styled(heading, heading_style()), None));
+        out.push((Line::styled(heading, heading_style()), Vec::new()));
         grouped(out, &members[i], groups, level + 1, query, env, remove_tag);
     }
 }
@@ -156,6 +158,14 @@ fn group_names(key: Key, t: &Task, env: &Env) -> Vec<(String, String)> {
     let status = env.statuses.get(t.status);
     let one = |sort: String, name: String| vec![(sort, name)];
     match key {
+        // A function's text, or each of its list's.
+        Key::Function(i) => env
+            .functions
+            .map(|c| super::function::headings(c.get(t, i)))
+            .unwrap_or_default()
+            .into_iter()
+            .map(|h| (h.to_lowercase(), h))
+            .collect(),
         Key::Status => {
             let done = matches!(status.kind, Type::Done | Type::Cancelled | Type::NonTask);
             if done {
@@ -266,6 +276,9 @@ fn compare(key: Key, a: &Task, b: &Task, env: &Env) -> Ordering {
         (None, None) => Ordering::Equal,
     };
     match key {
+        Key::Function(i) => env.functions.map_or(Ordering::Equal, |c| {
+            super::function::compare(c.get(a, i), c.get(b, i))
+        }),
         Key::Status => {
             let done =
                 |t: &Task| matches!(status(t).kind, Type::Done | Type::Cancelled | Type::NonTask);
@@ -395,7 +408,7 @@ fn columns(found: &[&Task], key: Key, query: &Query, env: &Env, width: usize) ->
             };
             (
                 Line::styled(parts.join(" │ ").trim_end().to_string(), style),
-                None,
+                Vec::new(),
             )
         })
         .collect()
@@ -475,13 +488,27 @@ fn task_row(t: &Task, query: &Query, env: &Env, remove_tag: Option<&str>, depth:
     {
         field(format!("🏁 {c}"));
     }
+    // The box checks the task; the backlink opens its note at it.
+    let width = |spans: &[Span]| spans.iter().map(|s| s.content.width()).sum::<usize>();
+    let box_from = depth * 2;
+    let mut parts = vec![(box_from, box_from + glyph.width(), toggle_action(t))];
     if shown("backlink") {
-        field(format!("({})", backlink(t)));
+        let before = width(&spans) + 1;
+        let shown = format!("({})", backlink(t));
+        parts.push((
+            before,
+            before + shown.width(),
+            crate::plugins::dataview::render::line_action(
+                &t.path.to_string_lossy().replace('\\', "/"),
+                t.line,
+            ),
+        ));
+        spans.push(Span::styled(format!(" {shown}"), DIM));
     }
     if !query.hidden.contains("urgency") {
-        field(format!("⚡{:.2}", t.urgency(env.today)));
+        spans.push(Span::styled(format!(" ⚡{:.2}", t.urgency(env.today)), DIM));
     }
-    (Line::from(spans), Some(toggle_action(t)))
+    (Line::from(spans), parts)
 }
 
 /// Ids of open tasks, and ids open tasks depend on (for "blocked" and

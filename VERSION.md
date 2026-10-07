@@ -1,6 +1,6 @@
 # Version history
 
-Current version: **1.0.2**
+Current version: **1.3.0**
 
 ## Versioning rules
 
@@ -28,6 +28,61 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 1.3.0 (2026-10-08)
+
+### Added
+- **A checked task stays a moment:** a task checked in `tasks` or
+  Dataview `TASK` results no longer disappears at once (from a `not
+  done` query): it stays where it was, shown checked (☑, ☒ …), for a few
+  seconds, and a click on it again in that time unchecks it. Then the
+  results are drawn anew. How long is a setting of Tasks and of
+  Dataview, "Checked tasks stay (seconds)": 0 to 10, 3.5 by default (0:
+  at once, as before).
+
+## 1.2.0 (2026-10-08)
+
+### Added
+- **Bases: groups in every layout (BA-47b):** a table, list or cards
+  grouped by a property follow `groupOrder` as the board does (its
+  order, groups it leaves out hidden, empty groups it names, None last);
+  a click on a group's heading (or Enter in view mode) folds it. The
+  Group menu as commands, for every layout: "Reorder groups", "Show or
+  hide a group", "Add a group", written to `groupOrder`.
+- **Boards in notes work by click:** a card's menu opens it or moves it
+  to another column (the note's property changes); a column's heading
+  folds it. Cards in a cards view open their own menu, two or more on a
+  line too.
+
+### Changed
+- Notes without a value are grouped under "None" in every layout (as on
+  boards, and as the original names it), not "(empty)".
+
+## 1.1.0 (2026-10-08)
+
+### Added
+- **Tasks: JavaScript functions (W-81, TK-46):** `filter by function`,
+  `sort by function [reverse]` and `group by function [reverse]`, as in
+  the original: `filter by function task.due.moment?.isBefore(moment(),
+  'day')`, `group by function task.file.folder`. A query's functions run
+  in the sandbox once for all its tasks; `task` has the original's
+  fields (status, priority, the dates with `.moment`, file, tags,
+  urgency …). An error in a function shows in the query.
+- `moment()` in the sandbox is shared by Templater and Tasks and can now
+  compare: `isBefore`, `isAfter`, `isSame`, `isSameOrBefore`,
+  `isSameOrAfter` (to a day, month or year), `diff`, `startOf`, `year()`
+  … `day()`.
+
+## 1.0.3 (2026-10-08)
+
+### Changed
+- **Task results check on their box only:** in `tasks` and Dataview
+  `TASK` results a click on ☐ checks the task, as in the originals; a
+  click on the text does nothing, and a `tasks` result's backlink
+  (`(Note > Heading)`) opens its note at the task. Enter in view mode
+  still checks the row's task.
+- `example_vault/.trash/` is out of the repository (old test notes) and
+  ignored.
 
 ## 1.0.2 (2026-10-08)
 
