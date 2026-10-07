@@ -1,16 +1,18 @@
 # Version history
 
-Current version: **0.97.4**
+Current version: **1.0.0**
 
 ## Versioning rules
 
-blackglass uses [Semantic Versioning](https://semver.org). Before 1.0:
+blackglass uses [Semantic Versioning](https://semver.org). Since 1.0:
 
 | Change | Bump | Example |
 |--------|------|---------|
-| A feature is implemented (a row in `requirements/features.md` moves to ✅ or 🟡) | **MINOR** | 0.1.0 → 0.2.0 |
-| Bug fix, refactor, docs or tests only | **PATCH** | 0.2.0 → 0.2.1 |
-| Milestone M2 complete | **1.0.0** | |
+| Something that worked stops working the same way: a file format in the vault (`.blackglass/`, a plugin's settings), `keys.toml` command ids, a command-line option | **MAJOR** | 1.4.2 → 2.0.0 |
+| A feature is implemented (a row in `requirements/features.md` moves to ✅ or 🟡) | **MINOR** | 1.0.0 → 1.1.0 |
+| Bug fix, refactor, docs or tests only | **PATCH** | 1.1.0 → 1.1.1 |
+
+Before 1.0 a feature was a MINOR bump and everything else a PATCH.
 
 On every bump:
 1. Update `version` in `Cargo.toml`.
@@ -26,6 +28,38 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 1.0.0 (2026-10-07)
+
+blackglass 1.0: the workspace (M1), commands and plugins (M2) and the
+vault's features (M3) are complete, and queries (M4) all but one part
+(Tasks' JavaScript functions). 122 of 145 tracked features; what's left
+is planned work: AI (M5), and later file recovery, importing other apps'
+notes, publishing, and macOS and Windows builds (M8).
+
+### Added
+- **The example vault is built in:** `blackglass --example [FOLDER]`
+  writes it to `~/blackglass-example` (or FOLDER) and opens it at
+  Welcome; a copy already there is opened as it is. The release's
+  `.tar.gz` has the `example_vault/` folder too. (A build script embeds
+  the files git keeps, so a checkout's own notes stay out.)
+- **Homebrew:** `brew install serkanberksoy/tap/blackglass` on macOS
+  and Linux, built from source (the formula is in the
+  `serkanberksoy/homebrew-tap` repository; `scripts/homebrew-formula.sh`
+  writes it for a release from `packaging/homebrew/blackglass.rb.in`).
+- The start screen shows the program's name and version on top
+  ("blackglass v1.0.0", from `Cargo.toml`).
+
+### Changed
+- Performance checked for 1.0 on a 5,000-note vault (`tests/perf.rs`):
+  opening it and starting the plugins about a tenth of a second, a key
+  and its frame about 1 ms (3 ms in a 10,000-line note), searching every
+  note 14 ms, an idle tick 6 µs; the release binary 14.9 MB. The numbers
+  are in `documentation/technology_and_skills.md` and the README.
+- `tests/perf.rs` measures the tick that saves the session apart from an
+  idle tick (the first had made the average look 30 times slower).
+- From 1.0, a change that breaks what worked (a vault file format,
+  `keys.toml` ids, an option) is a MAJOR version (`VERSION.md`).
 
 ## 0.97.4 (2026-10-07)
 

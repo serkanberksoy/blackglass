@@ -159,18 +159,25 @@ JavaScript sandbox, about 5 MB with its parser); `cargo bloat --release
 `tests/perf.rs` measures the workspace on a generated vault of 5000 notes
 (and a 10,000-line note) with the plugins on: `cargo test --profile perf
 --test perf -- --ignored --nocapture` (the `perf` profile is the release
-one with thin LTO, to build faster). As of 0.63.2:
+one with thin LTO, to build faster). As of 1.0.0 (0.63.2 in brackets):
 
 | Step | Time | Memory after |
 |------|------|--------------|
-| Open the vault | 37 ms | 43 MB |
-| Plugins start (index) | 35 ms | 68 MB |
-| Key + frame, 10,000-line note | 2.9 ms | |
-| Key + frame, short note | 0.8 ms | |
-| Save a note | 9 ms (16 ms the long one) | |
-| Vault search | 12 ms | |
-| Rescan (F5) | 93 ms | |
-| Idle tick | < 1 µs | |
+| Open the vault | 38 ms (37) | 43 MB |
+| Plugins start (index) | 50 ms (35; more plugins now) | 84 MB |
+| Key + frame, 10,000-line note | 3.0 ms (2.9) | |
+| Key + frame, short note | 0.9 ms (0.8) | |
+| Save a note | 7 ms (9), 18 ms the long one (16) | |
+| Vault search | 14 ms (12) | |
+| Quick switcher, a key + frame | 6 ms | |
+| Rescan (F5) | 102 ms (93) | 125 MB |
+| A tick saving the session | 3.7 ms (once after a change) | |
+| Idle tick | 6 µs | |
+
+The release binary (static, x86_64 Linux) is 14.9 MB, 6.4 MB packed
+(14.3 MB at 0.76.1). Of its 8.2 MiB of code, the JavaScript engine (Boa)
+is 2.8 MiB and blackglass itself 2.0 MiB; the rest of the file is mostly
+data (syntax definitions, emoji); `cargo bloat --release --crates`.
 
 What keeps it so: notes are read and indexed on every core
 (`vault::par_map`); a save updates one note everywhere (`Vault::update_note`

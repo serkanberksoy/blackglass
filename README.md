@@ -16,10 +16,10 @@ terminal: developers, sysadmins, writers on a server, anyone who'd rather
 not leave the keyboard. Point it at a folder of Markdown files and you
 get a linked knowledge base with live preview, backlinks, tags, search,
 queries over your notes, tasks, kanban boards and templates, all in one
-14 MB program. It exists because a second brain shouldn't need a
+15 MB program. It exists because a second brain shouldn't need a
 browser engine, an account or a subscription: your notes stay plain
 Markdown files, and blackglass opens a 5,000-note vault in about a
-seventh of a second.
+tenth of a second.
 
 <p align="center">
   <img src="documentation/images/demo.gif" alt="blackglass: going to a note by typing its name, adding a task with an estimate and a date in words, and the totals updating" width="880">
@@ -27,7 +27,7 @@ seventh of a second.
 
 <p align="center"><em>Go to a note by typing part of its name, add a task with an estimate and a date in words, and watch the query results add it up.</em></p>
 
-**Version:** 0.97.4 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
+**Version:** 1.0.0 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
 
 ## Contents
 
@@ -50,8 +50,9 @@ seventh of a second.
   Open them in any editor, sync them with anything, keep them in Git.
   Nothing is locked in a database.
 - **Fast, really.** Written in Rust. On a vault of 5,000 notes it opens
-  in about a seventh of a second, answers a keystroke (redrawn screen
-  included) in under 3 ms, and searches every note in 13 ms. One 14 MB
+  in about a tenth of a second, answers a keystroke (redrawn screen
+  included) in about 1 ms (3 ms in a 10,000-line note), and searches
+  every note in 14 ms. One 15 MB
   program, no runtime, no browser engine.
 - **Anywhere you have a shell.** Over SSH on a server, in a tmux pane, on
   a laptop with no window manager. The keyboard drives everything (every
@@ -145,6 +146,15 @@ terminals, with ASCII symbols where Unicode can't be shown.
 
 ## Installation
 
+### Homebrew (macOS, Linux)
+
+```bash
+brew install serkanberksoy/tap/blackglass
+```
+
+Homebrew builds it from source, with Rust brought in for the build (a
+few minutes the first time). Then try `blackglass --example`.
+
 ### Linux (x86_64)
 
 Download `blackglass` from the
@@ -190,7 +200,7 @@ where. Optional programs it uses when they're there:
 ## Quick start
 
 ```bash
-blackglass example_vault        # try the example vault (start at Welcome)
+blackglass --example            # try the example vault: a tour of every feature
 blackglass ~/Notes              # open your own folder of notes
 blackglass                      # choose a vault: a recent one, or any folder
 blackglass ~/Notes/today.md     # open a note in its vault
@@ -202,9 +212,11 @@ The first keys: **Ctrl+P** every command · **Ctrl+O** go to a note ·
 **F1** help · **Ctrl+Q** quit. Follow a link with **Ctrl+Enter** or a
 click.
 
-The example vault is a guided tour: `Welcome.md` leads to a page for
-each part of the workspace, each kind of formatting and each plugin,
-with something to try on every page.
+The example vault is built in: `blackglass --example` writes it to
+`~/blackglass-example` (or the folder you give) and opens it. It's a
+guided tour: `Welcome.md` leads to a page for each part of the
+workspace, each kind of formatting and each plugin, with something to
+try on every page.
 
 ## Configuration
 

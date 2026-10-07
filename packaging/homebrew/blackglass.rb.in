@@ -1,0 +1,40 @@
+# The Homebrew formula for blackglass, filled in by scripts/homebrew-formula.sh
+# for a release and pushed to github.com/serkanberksoy/homebrew-tap:
+#
+#   brew install serkanberksoy/tap/blackglass
+class Blackglass < Formula
+  desc "Note-taking workspace for the terminal: linked Markdown notes, queries, tasks"
+  homepage "https://github.com/serkanberksoy/blackglass"
+  url "https://github.com/serkanberksoy/blackglass/archive/refs/tags/v@VERSION@.tar.gz"
+  sha256 "@SHA256@"
+  license "MIT"
+  head "https://github.com/serkanberksoy/blackglass.git", branch: "main"
+
+  depends_on "rust" => :build
+
+  # The editor, a library blackglass builds against from beside it
+  # (a path dependency, ../mdedit).
+  resource "mdedit" do
+    url "https://github.com/serkanberksoy/mdedit/archive/refs/tags/v@MDEDIT_VERSION@.tar.gz"
+    sha256 "@MDEDIT_SHA256@"
+  end
+
+  def install
+    mdedit = buildpath.parent/"mdedit"
+    mdedit.mkpath
+    resource("mdedit").stage(mdedit)
+    system "cargo", "install", *std_cargo_args
+  end
+
+  def caveats
+    <<~EOS
+      Try the example vault, a tour of every feature:
+        blackglass --example
+    EOS
+  end
+
+  test do
+    assert_match "blackglass #{version}", shell_output("#{bin}/blackglass --version")
+    system bin/"blackglass", "--help"
+  end
+end

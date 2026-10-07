@@ -44,8 +44,29 @@ fn main() -> io::Result<()> {
         println!("blackglass {}", env!("CARGO_PKG_VERSION"));
         return Ok(());
     }
+    // The example vault: written out (once), then opened at its start.
+    if cli.example {
+        let folder = cli
+            .path
+            .clone()
+            .unwrap_or_else(blackglass::example::default_folder);
+        match blackglass::example::install(&folder) {
+            Ok(welcome) => {
+                return run_with(Some(welcome), cli.mouse);
+            }
+            Err(e) => {
+                eprintln!("blackglass: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+    run_with(cli.path, cli.mouse)
+}
+
+/// Opens `path` (a vault or a note; `None`: choose a vault first) and runs.
+fn run_with(path: Option<std::path::PathBuf>, mouse: bool) -> io::Result<()> {
     // Without a folder: choose a vault first (recent ones, or any folder).
-    let path = match cli.path {
+    let path = match path {
         Some(path) => path,
         None => match choose_vault()? {
             Some(path) => path,
@@ -90,7 +111,7 @@ fn main() -> io::Result<()> {
     // Pasted text arrives as one event instead of keystrokes, so newlines
     // don't continue lists and tabs don't indent.
     let _ = execute!(io::stdout(), EnableBracketedPaste);
-    if cli.mouse {
+    if mouse {
         let _ = execute!(io::stdout(), EnableMouseCapture);
     }
     // Lets Ctrl+Shift+S (Save As) and Ctrl+Shift+F be told apart, in
@@ -105,7 +126,6 @@ fn main() -> io::Result<()> {
     app.shared.picker = mdedit::images::picker_for(app.shared.config.images);
     // A panic must not leave the terminal in these modes (ratatui's own
     // hook restores the rest).
-    let mouse = cli.mouse;
     let hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         leave_modes(enhanced, mouse);

@@ -27,6 +27,9 @@ name="blackglass-$version-x86_64-linux"
 rm -rf "dist/$name" && mkdir -p "dist/$name"
 cp "$bin" "dist/$name/blackglass"
 cp README.md LICENSE VERSION.md "dist/$name/"
+# The example vault as git keeps it (the program has it built in too:
+# blackglass --example).
+git archive HEAD example_vault | tar -x -C "dist/$name"
 tar -C dist -czf "dist/$name.tar.gz" "$name"
 cp "$bin" "dist/$name"-bin && mv "dist/$name"-bin "dist/blackglass"
 (cd dist && sha256sum "$name.tar.gz" blackglass > SHA256SUMS)

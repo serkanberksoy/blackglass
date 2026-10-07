@@ -15,6 +15,7 @@ pub mod backlinks;
 pub mod cli;
 pub mod commands;
 pub mod config;
+pub mod example;
 pub mod highlights;
 pub mod journal;
 pub mod keymap;

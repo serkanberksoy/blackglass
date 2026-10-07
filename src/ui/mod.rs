@@ -533,7 +533,11 @@ fn draw_empty(buf: &mut Buffer, area: Rect, app: &App, theme: &Theme) {
             .join(" / ")
     };
     let row = |text: &str, key: String| (text.to_string(), key);
+    // The program and its version (from Cargo.toml), then the commands.
+    let brand = format!("blackglass v{}", env!("CARGO_PKG_VERSION"));
     let mut lines = vec![
+        row(&brand, String::new()),
+        row("", String::new()),
         row("No file is open", String::new()),
         row("", String::new()),
         row("Create new note", keys("new-note")),
@@ -591,25 +595,32 @@ fn draw_empty(buf: &mut Buffer, area: Rect, app: &App, theme: &Theme) {
     let (left, right) = lines.split_at(moving - 1);
     let right = &right[1..];
     let columns = lines.len() as u16 > area.height && area.width >= 2 * width + 6;
-    // Each section: its rows (text, keys), its column and its title row.
+    // Each section: its rows (text, keys), its column and how far down
+    // it starts (beside "No file is open", under the program's name).
     type Rows<'a> = &'a [(String, String)];
-    let sections: Vec<(Rows, u16, usize)> = if columns {
+    let sections: Vec<(Rows, u16, u16)> = if columns {
         let x = area.x + (area.width - 2 * width - 6) / 2;
-        vec![(left, x, 0), (right, x + width + 6, 1)]
+        vec![(left, x, 0), (right, x + width + 6, 2)]
     } else {
-        vec![(&lines[..], area.x + (area.width - width) / 2, moving)]
+        vec![(&lines[..], area.x + (area.width - width) / 2, 0)]
     };
-    let tallest = sections.iter().map(|(l, ..)| l.len()).max().unwrap_or(0) as u16;
+    let tallest = sections
+        .iter()
+        .map(|&(l, _, down)| l.len() as u16 + down)
+        .max()
+        .unwrap_or(0);
     let top = area.y + area.height.saturating_sub(tallest) / 3;
-    for (part, x, heading) in sections {
+    for (part, x, down) in sections {
         for (i, (text, key)) in part.iter().enumerate() {
-            let y = top + i as u16;
+            let y = top + down + i as u16;
             if y >= area.bottom() {
                 break;
             }
-            // The first row of each section is its title.
-            let title = i == 0 || (!columns && i == heading);
-            let style = if title {
+            // The program's name on top, each section's title.
+            let title = matches!(text.as_str(), "No file is open" | "Moving around");
+            let style = if *text == brand {
+                theme.fg(ACCENT).add_modifier(Modifier::BOLD)
+            } else if title {
                 theme.fg(MUTED).add_modifier(Modifier::BOLD)
             } else {
                 theme.fg(TEXT)

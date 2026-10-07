@@ -7,6 +7,7 @@ pub const USAGE: &str = "\
 blackglass: a note vault in the terminal
 
 Usage: blackglass [OPTIONS] [FOLDER | NOTE]
+       blackglass --example [FOLDER]
 
   FOLDER          the vault to open (without one, blackglass asks: a
                   recent vault, or any folder, made if it's new;
@@ -15,6 +16,9 @@ Usage: blackglass [OPTIONS] [FOLDER | NOTE]
                   .blackglass/ (else in its own folder)
 
 Options:
+  --example       write the example vault (a tour of every feature) to
+                  FOLDER, or ~/blackglass-example, and open it; a copy
+                  already there is opened as it is
   --no-mouse      leave the mouse to the terminal (select text as usual)
   -h, --help      show this help
   -V, --version   show the version
@@ -100,6 +104,8 @@ mdedit's (until it exists, mdedit's config.toml is read; see `mdedit
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Cli {
     pub path: Option<PathBuf>,
+    /// `--example`: write the example vault (to `path`, if given).
+    pub example: bool,
     pub mouse: bool,
     pub help: bool,
     pub version: bool,
@@ -114,6 +120,7 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Cli, String> {
     for arg in args {
         match arg.as_str() {
             "--no-mouse" => cli.mouse = false,
+            "--example" => cli.example = true,
             "-h" | "--help" => cli.help = true,
             "-V" | "--version" => cli.version = true,
             s if s.starts_with('-') && s.len() > 1 => {
@@ -150,6 +157,9 @@ mod tests {
         assert!(args(&["--version"]).unwrap().version);
         assert!(args(&["--nope"]).is_err());
         assert!(args(&["a", "b"]).is_err());
+        let cli = args(&["--example", "tour"]).unwrap();
+        assert!(cli.example);
+        assert_eq!(cli.path, Some(PathBuf::from("tour")));
     }
 
     #[test]

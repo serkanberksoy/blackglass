@@ -8691,6 +8691,8 @@ fn the_start_screen_shows_how_to_move_around() {
             .position(|r| r.contains(name))
             .unwrap_or_else(|| panic!("{name}: {rows:#?}"))
     };
+    let title = format!("blackglass v{}", env!("CARGO_PKG_VERSION"));
+    assert!(at(&title) < at("No file is open"), "the title on top");
     assert!(at("Moving around") > at("Quit"), "a section of its own");
     let settings = at("Settings");
     assert!(rows[settings].contains("Alt+, / Ctrl+,"), "{rows:#?}");

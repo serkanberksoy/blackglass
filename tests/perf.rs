@@ -147,6 +147,11 @@ fn a_large_vault() {
     let t0 = Instant::now();
     key(&mut app, KeyCode::Char('s'), KeyModifiers::CONTROL);
     report("save small note", t0.elapsed());
+    // The first tick saves the session (the open notes changed); then
+    // ticks are idle.
+    let t0 = Instant::now();
+    app.tick();
+    report("tick saving the session", t0.elapsed());
     let t0 = Instant::now();
     for _ in 0..20 {
         app.tick();
