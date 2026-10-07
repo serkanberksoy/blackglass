@@ -172,8 +172,8 @@ terminals, with ASCII symbols where Unicode can't be shown.
    ```
 
 Update with `brew upgrade blackglass`. The same commands work with
-Homebrew on Linux. A terminal with true color looks best: iTerm2,
-WezTerm, kitty or Ghostty (Terminal.app shows 256 colors).
+Homebrew on Linux. A terminal with true color looks best, such as
+iTerm2, WezTerm, kitty or Ghostty.
 
 ### Linux (x86_64)
 
