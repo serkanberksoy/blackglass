@@ -5,6 +5,8 @@ genre: scifi
 pages: 255
 read: 2026-07-20
 aliases: [Foundation trilogy]
+status: finished
+started: 2026-07-14
 tags: [reading, scifi]
 ---
 # Foundation

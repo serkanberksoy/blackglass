@@ -1,6 +1,6 @@
 # Version history
 
-Current version: **1.3.0**
+Current version: **1.5.1**
 
 ## Versioning rules
 
@@ -28,6 +28,69 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 1.5.1 (2026-10-08)
+
+### Changed
+- **The budget example lives in the daily notes:** a payment is one short
+  line under `## Money` in the day's note (`- [[Groceries]] 68.40 weekly
+  shop`), its day and month the note's; `- income 2800`, `+` lines to add
+  or move money (`- [[Fun]] +30 from [[Eating out]]`), `[for:: 2026-10]`
+  for a line that counts in another month. Nobody types the monthly
+  filling: each envelope gets its `monthly` share every month from its
+  `since`. The monthly ledgers and their template are gone; a report is a
+  note with just its `month`. The daily note template has a `## Money`
+  heading.
+
+### Fixed
+- **Dataview:** text in results shows its wiki links as they read (`[[Fun]]
+  28 cinema` as "Fun 28 cinema", an alias as the alias), as Dataview
+  renders text as Markdown.
+- **Dataview:** a list item's `outlinks` keep the names' case as written
+  (they were lowercase: `rent` for `[[Rent]]`).
+
+## 1.5.0 (2026-10-08)
+
+### Added
+- **Task fields as muted chips in the note (TK-09, W-81 ✅):** a task's
+  fields (📅 and the other dates, the priority, 🔁 and its rule, 🆔, ⛔,
+  🏁) show in the muted color on a raised background, so the description
+  stands out; the text stays as written. ✅, ❌ and ➕ count only with
+  their date, since they're common in ordinary text. Uses mdedit 3.22.0's
+  new `set_marks`; plugins can style parts of a line with
+  `Plugin::marks`.
+
+## 1.4.1 (2026-10-08)
+
+### Added
+- **Three more worked examples in the example vault**, Dataview queries
+  only: a reading tracker over `Books/` (reading now with progress, up
+  next, finished, month by month, by genre), a habit tracker in `Habits/`
+  (a line a day: the last two weeks, week by week, streaks, monthly rates
+  against goals in the note's properties) and a contacts list in
+  `People/` (who's due a call, birthdays coming up, by company, the
+  latest conversations).
+
+### Fixed
+- **Dataview:** `date("2026-09")` and `date("2026")` are the first day of
+  that month or year, as in Luxon (they were nothing).
+- **Dataview:** `dateformat` knows more of Luxon's tokens: `ccc` / `cccc`
+  and `c` / `E` (weekdays), `kkkk` (the ISO week's year), `W`, `LLL` /
+  `LLLL` (the month), `o` (day of the year), `H`, `h` / `hh` and `a`
+  (12-hour clock), and keeps text in single quotes as it is
+  (`kkkk-'W'WW` → `2026-W41`).
+- **Dataview:** a dash before a letter is part of a name, as in Dataview:
+  `this.read-goal` reads the property `read goal` (it was `this.read`
+  minus `goal`); `a - b` still subtracts.
+
+## 1.4.0 (2026-10-08)
+
+### Added
+- **Edit and postpone buttons on task results (TK-48):** each `tasks`
+  result ends with ✎ (the task window, for that task) and ⇥ (postpone
+  it: a day, two, a week …), as the original's buttons (`[e]` / `[p]`
+  without Unicode); `hide edit button` / `hide postpone button` leave
+  them out. Not in `columns by` layouts.
 
 ## 1.3.0 (2026-10-08)
 

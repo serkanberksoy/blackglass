@@ -5048,7 +5048,7 @@ fn tasks_show_trees_columns_and_leave_out_sub_items() {
             ),
             (
                 "Q.md",
-                "top\n```tasks\npath includes P\nshow tree\nhide backlink\n```\n```tasks\npath includes P\nexclude sub-items\nhide backlink\n```\n```tasks\npath includes P\ncolumns by status.name\nhide backlink\n```\n",
+                "top\n```tasks\npath includes P\nshow tree\nhide backlink\nhide edit button\nhide postpone button\n```\n```tasks\npath includes P\nexclude sub-items\nhide backlink\nhide edit button\nhide postpone button\n```\n```tasks\npath includes P\ncolumns by status.name\nhide backlink\n```\n",
             ),
         ],
     );
@@ -8328,7 +8328,11 @@ fn spot(rows: &[String], text: &str) -> (u16, u16) {
         .enumerate()
         .find_map(|(y, r)| {
             let i = r.find(text)?;
-            Some((r[..i].chars().count() as u16, y as u16))
+            // The screen column: wide characters (emoji) take two.
+            Some((
+                unicode_width::UnicodeWidthStr::width(&r[..i]) as u16,
+                y as u16,
+            ))
         })
         .unwrap_or_else(|| panic!("{text}: {rows:#?}"))
 }
@@ -9027,4 +9031,80 @@ fn checked_tasks_can_go_at_once() {
     app.tick();
     let rows = screen(&mut app, 100, 20).join("\n");
     assert!(!rows.contains("Paint the shed"), "gone at once: {rows}");
+}
+
+#[test]
+fn task_results_have_edit_and_postpone_buttons() {
+    let mut app = tasks_app(
+        "tasks-buttons",
+        &[
+            ("T.md", "- [ ] Paint the shed 📅 2026-10-20\n"),
+            (
+                "Q.md",
+                "top\n\n```tasks\nnot done\nhide urgency\n```\n\n```tasks\nnot done\nhide urgency\nhide edit button\nhide postpone button\n```\n",
+            ),
+        ],
+    );
+    app.open(&note(&app, "Q.md"));
+    let rows = screen(&mut app, 110, 24);
+    let shed: Vec<&String> = rows
+        .iter()
+        .filter(|r| r.contains("Paint the shed"))
+        .collect();
+    assert_eq!(shed.len(), 2, "{rows:#?}");
+    assert!(
+        shed[0].contains('✎') && shed[0].contains('⇥'),
+        "{}",
+        shed[0]
+    );
+    assert!(
+        !shed[1].contains('✎') && !shed[1].contains('⇥'),
+        "hidden: {}",
+        shed[1]
+    );
+    // ✎: the task window, for that task.
+    let (x, y) = spot(&rows, "✎");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x, y);
+    let screen_now = screen(&mut app, 110, 24).join("\n");
+    assert!(
+        screen_now.contains("Edit task") && screen_now.contains("2026-10-20"),
+        "{screen_now}"
+    );
+    key(&mut app, KeyCode::Esc);
+    // ⇥: postpone it.
+    let rows = screen(&mut app, 110, 24);
+    let (x, y) = spot(&rows, "⇥");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x, y);
+    typing(&mut app, "1 day");
+    key(&mut app, KeyCode::Enter);
+    let text = fs::read_to_string(app.vault.root.join("T.md")).unwrap();
+    assert!(text.contains("📅 2026-10-21"), "{text}");
+}
+
+#[test]
+fn task_fields_in_a_note_are_muted_chips() {
+    let mut app = tasks_app(
+        "tasks-chips",
+        &[(
+            "T.md",
+            "top\n\n- [ ] Pay rent ⏫ 🔁 every month 📅 2026-10-01 #home\n",
+        )],
+    );
+    app.open(&note(&app, "T.md"));
+    let rows = screen(&mut app, 100, 12);
+    let (x, y) = spot(&rows, "Pay rent");
+    let text = bg_at(&mut app, 100, 12, x, y);
+    for field in ["⏫", "🔁 every", "📅 2026", "2026-10-01"] {
+        let (x, y) = spot(&rows, field);
+        assert_ne!(bg_at(&mut app, 100, 12, x, y), text, "{field}: {rows:#?}");
+    }
+    let (x, y) = spot(&rows, "#home");
+    let tag = bg_at(&mut app, 100, 12, x, y);
+    let (x, y) = spot(&rows, "📅");
+    assert_ne!(
+        tag,
+        bg_at(&mut app, 100, 12, x, y),
+        "the tag isn't the date's"
+    );
+    assert!(rows[y as usize].contains("Pay rent ⏫ 🔁 every month 📅 2026-10-01"));
 }

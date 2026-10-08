@@ -4,6 +4,8 @@ rating: 3
 genre: history
 pages: 443
 read: 2026-09-02
+status: finished
+started: 2026-08-20
 tags: [reading, history]
 ---
 # Sapiens

@@ -27,7 +27,7 @@ tenth of a second.
 
 <p align="center"><em>Go to a note by typing part of its name, add a task with an estimate and a date in words, and watch the query results add it up.</em></p>
 
-**Version:** 1.3.0 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
+**Version:** 1.5.1 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
 
 ## Contents
 
@@ -63,7 +63,7 @@ tenth of a second.
 
 ## Features
 
-122 of 145 tracked features are done; [the full list](documentation/features.md)
+123 of 145 tracked features are done; [the full list](documentation/features.md)
 says what each one does.
 
 ### Linked notes with live preview
@@ -96,10 +96,11 @@ says what each one does.
   network) for charts, stats and templates that ask questions.
 - Results update as you type; click a result to open it or check a task
   off.
-- **A worked example:** an envelope budget with monthly reports (where
-  the money went, what's left in every envelope, savings goals), built
-  from notes and Dataview queries alone (`blackglass --example`, then
-  `Budget`).
+- **Worked examples,** built from notes and Dataview queries alone
+  (`blackglass --example`): an envelope budget kept in the daily notes,
+  with monthly reports (`Budget`), a reading tracker (`Reading tracker`), a habit tracker with
+  streaks (`Habits`) and a contacts list with birthdays and who's due a
+  call (`Contacts`).
 
 <img src="documentation/images/detail-days.png" alt="A project plan by day: tasks, the time planned and what's left" width="560">
 

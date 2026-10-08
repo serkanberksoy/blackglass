@@ -1,9 +1,14 @@
 ---
 author: Ilber Ortayli
 rating: 5
+genre: history
+pages: 290
+status: reading
+started: 2026-09-20
+page: 118
 tags: [reading, history]
 ---
-# Dune
+# Türklerin Tarihi
 
 | Part | Status |
 |------|--------|

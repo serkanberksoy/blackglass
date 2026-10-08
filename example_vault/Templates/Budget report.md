@@ -1,88 +1,110 @@
 ---
 month: <% tp.file.title.slice(-7) %>
-ledger: "[[Budget <% tp.file.title.slice(-7) %>]]"
 ---
 # Budget report: <% tp.date.now("MMMM YYYY", 0, tp.file.title.slice(-7) + "-01", "YYYY-MM-DD") %>
 
-[[Budget <% tp.file.title.slice(-7) %>|The month's ledger]] · [[Budget]]
+[[Budget]]
 
 ## The month in numbers
 
-- **Income:** `= this.ledger.income`
-- **Into the envelopes:** `= round(sum(filter(this.ledger.file.lists, (l) => l.fill).amount), 2)`
-- **Spent:** `= round(sum(filter(this.ledger.file.lists, (l) => l.spent).amount), 2)`
-- **Kept** (income less spending): `= round(this.ledger.income - sum(filter(this.ledger.file.lists, (l) => l.spent).amount), 2)`
-- **Without a job** (0 when every bit is in an envelope): `= round(this.ledger.income - sum(filter(this.ledger.file.lists, (l) => l.fill).amount), 2)`
+```dataview
+TABLE WITHOUT ID default(sum(filter(rows, (r) => startswith(r.l.text, "income")).amount), 0) AS Income, round(sum(filter(rows, (r) => startswith(r.l.text, "[[") AND !contains(r.l.text, "]] +")).amount), 2) AS Spent, round(default(sum(filter(rows, (r) => startswith(r.l.text, "income")).amount), 0) - sum(filter(rows, (r) => startswith(r.l.text, "[[") AND !contains(r.l.text, "]] +")).amount), 2) AS Kept, length(filter(rows, (r) => startswith(r.l.text, "[[") AND !contains(r.l.text, "]] +"))) AS Payments
+FROM "Journal"
+FLATTEN file.lists AS l
+WHERE meta(l.section).subpath = "Money"
+FLATTEN choice(l.for, l.for, dateformat(file.day, "yyyy-MM")) AS month
+WHERE month = this.month
+FLATTEN number(l.text) AS amount
+GROUP BY true
+```
 
 ## Envelopes
 
-Filled and spent this month, and what's in each envelope at its end
-(with what was left from earlier months):
+Each envelope's share and what was added or moved in (Filled), what it
+paid out, and what's in it at the month's end (with what was left from
+earlier months):
 
 ```dataview
-TABLE WITHOUT ID key AS Envelope, round(sum(filter(rows, (r) => r.month = this.month AND r.l.fill).l.amount), 2) AS Filled, round(sum(filter(rows, (r) => r.month = this.month AND r.l.spent).l.amount), 2) AS Spent, round(sum(filter(rows.l, (x) => x.fill).amount) - sum(filter(rows.l, (x) => x.spent).amount), 2) AS "In it now"
-FROM "Budget/Months"
-FLATTEN file.lists AS l
-WHERE month <= this.month AND (l.fill OR l.spent)
-GROUP BY choice(l.fill, l.fill, l.spent)
-SORT key.monthly DESC
+TABLE WITHOUT ID file.link AS Envelope, monthly + round(default(sum(map(filter(here, (l) => contains(l.text, "]] +")), (l) => number(l.text) * choice(l.outlinks[0] = me, 1, -1))), 0), 2) AS Filled, round(default(sum(map(filter(here, (l) => !contains(l.text, "]] +")), (l) => number(l.text))), 0), 2) AS Spent, round(monthly * months + default(sum(map(upto, (l) => number(l.text) * choice(contains(l.text, "]] +") AND l.outlinks[0] = me, 1, -1))), 0), 2) AS "At the end"
+FROM "Budget/Envelopes"
+WHERE since <= date(this.month)
+FLATTEN file.link AS me
+FLATTEN (date(this.month).year - since.year) * 12 + date(this.month).month - since.month + 1 AS months
+FLATTEN list(filter(flat(file.inlinks.file.lists), (l) => meta(l.section).subpath = "Money" AND contains(l.outlinks, me))) AS lines
+FLATTEN list(filter(lines, (l) => choice(l.for, l.for, dateformat(link(l.path).file.day, "yyyy-MM")) = this.month)) AS here
+FLATTEN list(filter(lines, (l) => choice(l.for, l.for, dateformat(link(l.path).file.day, "yyyy-MM")) <= this.month)) AS upto
+SORT monthly DESC
+```
+
+## Overspent
+
+Envelopes below zero at the month's end (move money over from another
+one with a `+` line to cover them):
+
+```dataview
+TABLE WITHOUT ID file.link AS Envelope, -left AS "Short by"
+FROM "Budget/Envelopes"
+WHERE since <= date(this.month)
+FLATTEN file.link AS me
+FLATTEN (date(this.month).year - since.year) * 12 + date(this.month).month - since.month + 1 AS months
+FLATTEN list(filter(flat(file.inlinks.file.lists), (l) => meta(l.section).subpath = "Money" AND contains(l.outlinks, me) AND choice(l.for, l.for, dateformat(link(l.path).file.day, "yyyy-MM")) <= this.month)) AS upto
+FLATTEN round(monthly * months + default(sum(map(upto, (l) => number(l.text) * choice(contains(l.text, "]] +") AND l.outlinks[0] = me, 1, -1))), 0), 2) AS left
+WHERE left < 0
 ```
 
 ## Where the money went
 
 ```dataview
-TABLE WITHOUT ID key AS Envelope, round(sum(rows.l.amount), 2) AS Spent, padleft("", round(sum(rows.l.amount) / 40), "█") AS " "
-FROM "Budget/Months"
+TABLE WITHOUT ID key AS Envelope, round(sum(rows.amount), 2) AS Spent, padleft("", round(sum(rows.amount) / 40), "█") AS " "
+FROM "Journal"
 FLATTEN file.lists AS l
-WHERE month = this.month AND l.spent
-GROUP BY l.spent
-SORT sum(rows.l.amount) DESC
+WHERE meta(l.section).subpath = "Money" AND startswith(l.text, "[[") AND !contains(l.text, "]] +")
+FLATTEN choice(l.for, l.for, dateformat(file.day, "yyyy-MM")) AS month
+WHERE month = this.month
+FLATTEN number(l.text) AS amount
+GROUP BY l.outlinks[0]
+SORT sum(rows.amount) DESC
 ```
 
 ## Needs, wants and savings
 
-Each kind of envelope's share of the income:
+What each kind of envelope paid out:
 
 ```dataview
-TABLE WITHOUT ID key AS Kind, round(sum(filter(rows.l, (x) => x.fill).amount), 2) AS Filled, round(sum(filter(rows.l, (x) => x.fill).amount) / this.ledger.income * 100) + "%" AS Share, round(sum(filter(rows.l, (x) => x.spent).amount), 2) AS Spent
-FROM "Budget/Months"
+TABLE WITHOUT ID key AS Kind, round(sum(rows.amount), 2) AS Spent
+FROM "Journal"
 FLATTEN file.lists AS l
-WHERE month = this.month AND (l.fill OR l.spent)
-GROUP BY choice(l.fill, l.fill, l.spent).kind
+WHERE meta(l.section).subpath = "Money" AND startswith(l.text, "[[") AND !contains(l.text, "]] +")
+FLATTEN choice(l.for, l.for, dateformat(file.day, "yyyy-MM")) AS month
+WHERE month = this.month
+FLATTEN number(l.text) AS amount
+GROUP BY l.outlinks[0].kind
 ```
 
 ## The five biggest payments
 
 ```dataview
-TABLE WITHOUT ID l.date AS Day, l.spent AS Envelope, l.amount AS Amount, regexreplace(l.text, " \[.*$", "") AS What
-FROM "Budget/Months"
+TABLE WITHOUT ID file.link AS Day, l.outlinks[0] AS Envelope, amount AS Amount, l.text AS Line
+FROM "Journal"
 FLATTEN file.lists AS l
-WHERE month = this.month AND l.spent
-SORT l.amount DESC
+WHERE meta(l.section).subpath = "Money" AND startswith(l.text, "[[") AND !contains(l.text, "]] +")
+FLATTEN choice(l.for, l.for, dateformat(file.day, "yyyy-MM")) AS month
+WHERE month = this.month
+FLATTEN number(l.text) AS amount
+SORT amount DESC
 LIMIT 5
-```
-
-## Overspent
-
-Envelopes that paid out more than was put in (move money over from
-another one to cover them):
-
-```dataview
-TABLE WITHOUT ID key AS Envelope, round(sum(filter(rows.l, (x) => x.spent).amount) - sum(filter(rows.l, (x) => x.fill).amount), 2) AS "Short by"
-FROM "Budget/Months"
-FLATTEN file.lists AS l
-WHERE month <= this.month AND (l.fill OR l.spent)
-GROUP BY choice(l.fill, l.fill, l.spent)
-WHERE sum(filter(rows.l, (x) => x.spent).amount) > sum(filter(rows.l, (x) => x.fill).amount)
 ```
 
 ## Day by day
 
 ```dataview
-TABLE WITHOUT ID key AS Day, round(sum(rows.l.amount), 2) AS Spent, length(rows) AS Payments
-FROM "Budget/Months"
+TABLE WITHOUT ID key AS Day, round(sum(rows.amount), 2) AS Spent, length(rows) AS Payments
+FROM "Journal"
 FLATTEN file.lists AS l
-WHERE month = this.month AND l.spent
-GROUP BY l.date
+WHERE meta(l.section).subpath = "Money" AND startswith(l.text, "[[") AND !contains(l.text, "]] +")
+FLATTEN choice(l.for, l.for, dateformat(file.day, "yyyy-MM")) AS month
+WHERE month = this.month
+FLATTEN number(l.text) AS amount
+GROUP BY file.link
 SORT key
 ```

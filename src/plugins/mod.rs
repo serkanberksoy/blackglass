@@ -478,6 +478,13 @@ pub trait Plugin {
         Vec::new()
     }
 
+    /// Parts of a line's text the plugin styles its own way in the live
+    /// preview (Tasks' fields as muted chips): byte ranges with their
+    /// style, the text as written. Asked while drawing: keep it cheap.
+    fn marks(&self, _text: &str) -> Vec<(std::ops::Range<usize>, ratatui::style::Style)> {
+        Vec::new()
+    }
+
     /// A table's lines to show instead of `lines` (its second the
     /// separator), as many: computed cells (Advanced Tables' `=SUM(…)`);
     /// `None`: as written. Asked while drawing, while the cursor isn't in
@@ -1124,6 +1131,15 @@ impl Plugins {
         let mut all = Vec::new();
         for e in self.entries.iter().filter(|e| e.enabled) {
             all.extend(e.plugin.hidden_lines());
+        }
+        all
+    }
+
+    /// The enabled plugins' marks in `text`.
+    pub fn marks(&self, text: &str) -> Vec<(std::ops::Range<usize>, ratatui::style::Style)> {
+        let mut all = Vec::new();
+        for e in self.entries.iter().filter(|e| e.enabled) {
+            all.extend(e.plugin.marks(text));
         }
         all
     }

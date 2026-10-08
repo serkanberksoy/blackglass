@@ -266,7 +266,7 @@ fn scan(lines: &[String], page: &mut Page) {
             fence = Some(f);
             continue;
         }
-        links(line, &mut page.outlinks, &mut seen);
+        links(line, &mut page.outlinks, &mut seen, false);
         let hashes = trimmed.chars().take_while(|&c| c == '#').count();
         if (1..=6).contains(&hashes) && trimmed[hashes..].starts_with(' ') {
             section = Some(trimmed[hashes..].trim().to_string());
@@ -327,7 +327,7 @@ fn list_item(
     }
     let line_text = vec![text.to_string()];
     let mut outlinks = Vec::new();
-    links(text, &mut outlinks, &mut HashSet::new());
+    links(text, &mut outlinks, &mut HashSet::new(), true);
     let trimmed = text.trim_end();
     let block_id = trimmed
         .rsplit_once(" ^")
@@ -455,13 +455,15 @@ fn strip_list_marker(line: &str) -> Option<&str> {
         .and_then(|r| r.strip_prefix(' '))
 }
 
-/// Link targets in a line: `[[Note]]`, `![[Note]]`, `[text](note.md)`.
-fn links(line: &str, out: &mut Vec<String>, seen: &mut HashSet<String>) {
+/// Link targets in a line: `[[Note]]`, `![[Note]]`, `[text](note.md)`, by
+/// name, lowercase (for matching) unless `as_written`.
+fn links(line: &str, out: &mut Vec<String>, seen: &mut HashSet<String>, as_written: bool) {
     let mut add = |target: &str| {
         let name = link_name(&target.replace("%20", " "));
-        let name = name.rsplit('/').next().unwrap_or(&name).to_lowercase();
-        if !name.is_empty() && seen.insert(name.clone()) {
-            out.push(name);
+        let name = name.rsplit('/').next().unwrap_or(&name);
+        let lower = name.to_lowercase();
+        if !lower.is_empty() && seen.insert(lower.clone()) {
+            out.push(if as_written { name.to_string() } else { lower });
         }
     };
     let mut rest = line;
@@ -580,6 +582,8 @@ mod tests {
             ]
         );
         assert_eq!(p.outlinks, ["dune", "sunset", "other note"]);
+        // A list item's links read as written (shown in results).
+        assert_eq!(p.lists[0].outlinks, ["Dune"]);
         assert!(p.mtime.is_some());
     }
 }

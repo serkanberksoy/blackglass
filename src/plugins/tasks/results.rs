@@ -350,6 +350,9 @@ fn push_task(
 
 /// The tasks in columns side by side, one per group of `key` (TK-47).
 fn columns(found: &[&Task], key: Key, query: &Query, env: &Env, width: usize) -> Vec<Row> {
+    let mut plain = query.clone();
+    plain.hidden.insert("edit button".into());
+    plain.hidden.insert("postpone button".into());
     let mut names: Vec<(String, String)> = Vec::new();
     let mut members: Vec<Vec<&Task>> = Vec::new();
     for t in found {
@@ -387,7 +390,8 @@ fn columns(found: &[&Task], key: Key, query: &Query, env: &Env, width: usize) ->
                 "─".repeat(w),
             ];
             for t in &members[i] {
-                let row = task_row(t, query, env, None, 0).0;
+                // In a column, no buttons (its cells aren't clickable).
+                let row = task_row(t, &plain, env, None, 0).0;
                 let text: String = row.spans.iter().map(|s| s.content.as_ref()).collect();
                 col.push(fit(&text));
             }
@@ -504,6 +508,21 @@ fn task_row(t: &Task, query: &Query, env: &Env, remove_tag: Option<&str>, depth:
             ),
         ));
         spans.push(Span::styled(format!(" {shown}"), DIM));
+    }
+    // ✎ opens the task window for it, ⇥ postpones it (as the original's
+    // buttons; `hide edit button`, `hide postpone button`).
+    let path = t.path.to_string_lossy().replace('\\', "/");
+    for (what, unicode, ascii) in [("edit", "✎", "[e]"), ("postpone", "⇥", "[p]")] {
+        if shown(&format!("{what} button")) {
+            let glyph = crate::ui::theme::glyph(unicode, ascii);
+            let before = width(&spans) + 1;
+            parts.push((
+                before,
+                before + glyph.width(),
+                format!("plugin:tasks:{what}:{}:{path}", t.line),
+            ));
+            spans.push(Span::styled(format!(" {glyph}"), DIM));
+        }
     }
     if !query.hidden.contains("urgency") {
         spans.push(Span::styled(format!(" ⚡{:.2}", t.urgency(env.today)), DIM));

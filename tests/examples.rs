@@ -187,3 +187,27 @@ fn every_template_in_the_example_vault_renders() {
     }
     assert!(checked >= 4, "only {checked} templates");
 }
+
+/// Prints the rendered `dataview` blocks of the notes named in `$NOTES`
+/// (`cargo test --test examples show_notes -- --ignored --nocapture`).
+#[test]
+#[ignore = "a tool for writing examples"]
+fn show_notes() {
+    let vault = example_vault();
+    let blocks_processor = Blocks(Rc::new(RefCell::new(Plugins::for_vault(&vault))));
+    let wanted = std::env::var("NOTES").unwrap_or_default();
+    for note in vault.notes.iter().filter(|n| {
+        wanted
+            .split(',')
+            .any(|w| n.rel_name().starts_with(w.trim()))
+    }) {
+        println!("=== {}", note.rel_name());
+        for (lang, source) in blocks(&note.lines) {
+            for line in blocks_processor.render(&lang, &source, Some(&note.path), 100) {
+                let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+                println!("{text}");
+            }
+            println!("---");
+        }
+    }
+}

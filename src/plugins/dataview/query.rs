@@ -724,9 +724,20 @@ fn tokenize(source: &str) -> Result<Vec<Spanned>, String> {
                 }
             }
         } else if c.is_alphabetic() || c == '_' {
-            let len = rest
-                .find(|c: char| !(c.is_alphanumeric() || "_.".contains(c)))
-                .unwrap_or(rest.len());
+            // A dash before a letter is part of the name, as in Dataview
+            // (`due-date`, a property `Due Date`): `a - b` subtracts.
+            let mut len = rest.len();
+            for (i, ch) in rest.char_indices() {
+                let dashed = ch == '-'
+                    && rest[i + 1..]
+                        .chars()
+                        .next()
+                        .is_some_and(|n| n.is_alphabetic() || n == '_');
+                if !(ch.is_alphanumeric() || "_.".contains(ch) || dashed) {
+                    len = i;
+                    break;
+                }
+            }
             (
                 Token::Word(rest[..len].trim_end_matches('.').to_string()),
                 len,

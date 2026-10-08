@@ -12,6 +12,9 @@ With the **Tasks** plugin, tasks carry dates and priorities:
 - [x] Buy a notebook ✅ 2026-09-28
 - [.] Called the bank: all fine
 
+The fields (dates, priority, 🔁, 🆔, ⛔) are dimmed, so what's to be done
+stands out; move the cursor onto a task to see it as written.
+
 Put the cursor on a task and run "Tasks: Toggle task done" (Ctrl+P): the
 done date is written, and a 🔁 task gets its next occurrence. "Tasks:
 Create or edit task" (**Alt+T**) opens a window with every field (each

@@ -49,8 +49,33 @@ fn show(value: &Value, d: &Display) -> String {
             .map(|v| show(v, d))
             .collect::<Vec<_>>()
             .join(", "),
+        Value::Text(t) if t.contains("[[") => link_names(t),
         other => other.display(),
     }
+}
+
+/// `t` with its wiki links as they read (Dataview renders text as
+/// Markdown): the alias, else the note's name (`Note > Heading`).
+fn link_names(t: &str) -> String {
+    let mut out = String::new();
+    let mut rest = t;
+    while let Some(open) = rest.find("[[") {
+        let Some(len) = rest[open + 2..].find("]]") else {
+            break;
+        };
+        out.push_str(&rest[..open]);
+        let inner = &rest[open + 2..open + 2 + len];
+        match inner.split_once('|') {
+            Some((_, alias)) => out.push_str(alias),
+            None => {
+                let name = inner.rsplit('/').next().unwrap_or(inner);
+                out.push_str(&name.trim_end_matches(".md").replace('#', " > "));
+            }
+        }
+        rest = &rest[open + 2 + len + 2..];
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Page names in results, like links.
@@ -519,6 +544,21 @@ mod tests {
                 &Display::default()
             )),
             ["No results"]
+        );
+    }
+
+    #[test]
+    fn links_in_text_show_as_their_names() {
+        let d = Display::default();
+        let text = |t: &str| show(&Value::Text(t.into()), &d);
+        assert_eq!(text("[[Eating out]] 24.60 ramen"), "Eating out 24.60 ramen");
+        assert_eq!(
+            text("[[Fun]] +30 from [[Budget/Eating out|eating]]"),
+            "Fun +30 from eating"
+        );
+        assert_eq!(
+            text("[[Note#Part]] and [[broken"),
+            "Note > Part and [[broken"
         );
     }
 

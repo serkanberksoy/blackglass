@@ -2459,6 +2459,13 @@ impl App {
             .collect();
         mdedit::markdown::set_rendered(rendered);
         let plugins = Rc::clone(&self.plugins);
+        mdedit::markdown::set_marks(Some(Rc::new(move |text: &str| {
+            plugins
+                .try_borrow()
+                .map(|p| p.marks(text))
+                .unwrap_or_default()
+        })));
+        let plugins = Rc::clone(&self.plugins);
         mdedit::markdown::set_table_cells(Some(Rc::new(move |lines: &[String]| {
             plugins.try_borrow().ok()?.table_cells(lines)
         })));

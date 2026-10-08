@@ -52,17 +52,25 @@ or off; all but Git and Recent Files are on in this vault.
 | Encrypt | [[Encrypt]] |
 | Git | [[Git]] |
 
-## A worked example
+## Worked examples
 
-[[Budget]]: an envelope budget, built from notes and [[Dataview]] queries
-alone. Every bit of income goes into an envelope, spending comes out of
-one, and each month has a report: where the money went, what's left in
-every envelope, overspending, savings goals.
+Each is built from plain notes and [[Dataview]] queries alone:
+
+- [[Budget]]: an envelope budget kept in the daily notes, a short line a
+  payment (`- [[Groceries]] 68.40 weekly shop`). Each envelope gets its
+  share every month, and each month has a report: where the money went,
+  what's left in every envelope, savings goals.
+- [[Reading tracker]]: the books in `Books/`, what you're reading (and how
+  far), what's next, what you finished, month by month and by genre.
+- [[Habits]]: a line a day, a two-week view, a square a day week by week,
+  streaks and monthly rates against your goals.
+- [[Contacts]]: people and companies, who's due a call, birthdays coming
+  up, the latest conversations.
 
 ## What the examples use
 
-`Books/`, `Journal/` (daily notes), `Articles/` and `Zettelkasten/` are notes
-the queries and boards above read; `Templates/` holds the templates,
+`Books/`, `Journal/` (daily notes), `Habits/`, `People/`, `Articles/` and
+`Zettelkasten/` are notes the queries and boards above read; `Templates/` holds the templates,
 `Scripts/` Templater's scripts, `Data/` files a script reads, `assets/` an
 image, `refs.bib` the bibliography.
 

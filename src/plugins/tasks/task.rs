@@ -532,6 +532,45 @@ fn markers(text: &str) -> Vec<(usize, usize, Field)> {
     found
 }
 
+/// Where each field is in `text` as written (TK-09): its emoji and its
+/// value, up to the next field or a tag; for styling the fields in a note.
+pub fn field_spans(text: &str) -> Vec<std::ops::Range<usize>> {
+    let emoji = MARKERS
+        .iter()
+        .map(|&(e, field)| (e, matches!(field, Field::Date(_))))
+        .chain(ALIASES.iter().map(|(from, _)| (*from, true)));
+    let mut starts: Vec<(usize, usize, bool)> = emoji
+        .flat_map(|(e, date)| {
+            text.match_indices(e)
+                .map(move |(at, m)| (at, at + m.len(), date))
+        })
+        .collect();
+    starts.sort_unstable();
+    starts.dedup_by_key(|(at, ..)| *at);
+    let mut spans = Vec::new();
+    for (i, &(at, end, date)) in starts.iter().enumerate() {
+        let until = starts.get(i + 1).map_or(text.len(), |(next, ..)| *next);
+        let value = &text[end..until];
+        // ✅, ❌, ➕ are common in prose: a date field is one with its date.
+        let first = value.trim_start_matches(['\u{fe0f}', ' ']);
+        if date
+            && first
+                .get(..10)
+                .and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+                .is_none()
+        {
+            continue;
+        }
+        // A tag after a field belongs to the line.
+        let value = match value.match_indices(" #").next() {
+            Some((cut, _)) => &value[..cut],
+            None => value,
+        };
+        spans.push(at..end + value.trim_end().len());
+    }
+    spans
+}
+
 /// The tags in `text` (`#tag`, not `#` alone or a heading).
 fn tags(text: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -810,6 +849,21 @@ mod tests {
 
     fn d(s: &str) -> NaiveDate {
         NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap()
+    }
+
+    #[test]
+    fn field_spans_cover_each_field_and_its_value() {
+        let text = "Pay rent ⏫ 🔁 every month 📅 2026-10-01 #home";
+        let shown: Vec<&str> = field_spans(text).into_iter().map(|r| &text[r]).collect();
+        assert_eq!(shown, ["⏫", "🔁 every month", "📅 2026-10-01"]);
+        let text = "a 📆\u{fe0f} 2026-10-01 🆔 x1 ⛔ a,b";
+        let shown: Vec<&str> = field_spans(text).into_iter().map(|r| &text[r]).collect();
+        assert_eq!(shown, ["📆\u{fe0f} 2026-10-01", "🆔 x1", "⛔ a,b"]);
+        assert!(field_spans("no fields #here").is_empty());
+        assert!(
+            field_spans("Status: ✅ shipped, ❌ nothing").is_empty(),
+            "a date field needs its date"
+        );
     }
 
     #[test]

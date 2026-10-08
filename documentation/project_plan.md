@@ -156,8 +156,9 @@ In order:
      (written to the notes' frontmatter), kanban moves, changing a view's
      sort / filters / columns / formulas in popups.
    Map view and row heights are left out (not for a terminal).
-11. 🟡 **Tasks plugin, W-78 … W-81** (M4, 0.50.0 … 0.53.0, 0.66.0; left:
-   JavaScript functions, styled fields in notes). The Tasks
+11. 🟡 **Tasks plugin, W-78 … W-81** (M4, 0.50.0 … 0.53.0, 0.66.0, 1.1.0, 1.5.0;
+   left: choosing dependencies from a list (TK-20), the results' toolbar
+   (TK-42)). The Tasks
    community plugin's features as a blackglass plugin (`src/plugins/tasks/`).
    Today's task handling stays **core** and unchanged: checkboxes, task
    states, Ctrl+T / Ctrl+L (mdedit) and Dataview's `TASK` queries; the

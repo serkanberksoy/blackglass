@@ -6,7 +6,7 @@
 use std::cmp::Ordering;
 use std::rc::Rc;
 
-use chrono::{Duration, Local, NaiveDate, NaiveTime};
+use chrono::{Duration, Local, NaiveDate, NaiveDateTime, NaiveTime};
 
 use super::index::{Index, Page, Task};
 use super::query::{Command, Expr, Kind, Op, Query, Source, is_date_word};
@@ -944,7 +944,9 @@ fn call(name: &str, args: &[Expr], scope: Scope) -> Result<Value, String> {
                 }
                 Value::Text(t) | Value::Link(t) => {
                     let name = t.rsplit('/').next().unwrap_or(&t);
-                    parse_date(name).map_or(Value::Null, Value::Date)
+                    parse_date(name)
+                        .or_else(|| month_or_year(name))
+                        .map_or(Value::Null, Value::Date)
                 }
                 d @ Value::Date(_) => d,
                 _ => Value::Null,
@@ -1611,28 +1613,51 @@ fn format_duration(d: Dur, format: &str) -> String {
     out
 }
 
-/// Luxon tokens as chrono's (for reading and writing dates).
+/// Luxon tokens as chrono's (for reading and writing dates); text in
+/// single quotes is kept as it is.
 fn luxon_to_chrono(format: &str) -> String {
-    const TOKENS: [(&str, &str); 14] = [
+    // Longest first, where one token starts another.
+    const TOKENS: [(&str, &str); 28] = [
         ("yyyy", "%Y"),
         ("yy", "%y"),
+        ("kkkk", "%G"),
+        ("kk", "%g"),
         ("MMMM", "%B"),
         ("MMM", "%b"),
         ("MM", "%m"),
         ("M", "%-m"),
+        ("LLLL", "%B"),
+        ("LLL", "%b"),
+        ("LL", "%m"),
+        ("L", "%-m"),
         ("dd", "%d"),
         ("d", "%-d"),
         ("EEEE", "%A"),
         ("EEE", "%a"),
-        ("HH", "%H"),
-        ("mm", "%M"),
-        ("ss", "%S"),
+        ("E", "%u"),
+        ("cccc", "%A"),
+        ("ccc", "%a"),
+        ("c", "%u"),
         ("WW", "%V"),
+        ("W", "%-V"),
+        ("ooo", "%j"),
+        ("o", "%-j"),
+        ("HH", "%H"),
+        ("H", "%-H"),
+        ("hh", "%I"),
+        ("h", "%-I"),
     ];
+    const TIME: [(&str, &str); 4] = [("mm", "%M"), ("ss", "%S"), ("a", "%p"), ("%", "%%")];
     let mut out = String::new();
     let mut rest = format;
     'outer: while !rest.is_empty() {
-        for (token, spec) in TOKENS {
+        if let Some(r) = rest.strip_prefix('\'') {
+            let (text, after) = r.split_once('\'').unwrap_or((r, ""));
+            out.push_str(&text.replace('%', "%%"));
+            rest = after;
+            continue;
+        }
+        for (token, spec) in TOKENS.iter().chain(&TIME) {
             if let Some(r) = rest.strip_prefix(token) {
                 out.push_str(spec);
                 rest = r;
@@ -1640,11 +1665,7 @@ fn luxon_to_chrono(format: &str) -> String {
             }
         }
         let c = rest.chars().next().expect("rest isn't empty");
-        if c == '%' {
-            out.push_str("%%");
-        } else {
-            out.push(c);
-        }
+        out.push(c);
         rest = &rest[c.len_utf8()..];
     }
     out
@@ -1654,6 +1675,19 @@ fn luxon_to_chrono(format: &str) -> String {
 /// `dd.MM.yyyy`, `MMMM d`, `EEE`, `HH:mm`).
 fn format_date(d: &chrono::NaiveDateTime, format: &str) -> String {
     d.format(&luxon_to_chrono(format)).to_string()
+}
+
+/// `2026-09` or `2026` (Luxon's ISO forms short of a day) as its first day.
+fn month_or_year(text: &str) -> Option<NaiveDateTime> {
+    let (year, month) = match text.trim().split_once('-') {
+        Some((y, m)) if m.len() == 2 => (y, m.parse().ok()?),
+        Some(_) => return None,
+        None => (text.trim(), 1),
+    };
+    if year.len() != 4 || !year.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    NaiveDate::from_ymd_opt(year.parse().ok()?, month, 1).map(|d| d.and_time(NaiveTime::MIN))
 }
 
 #[cfg(test)]
@@ -1834,6 +1868,32 @@ mod tests {
         };
         let names: Vec<_> = rows.into_iter().map(|(n, _)| n.name).collect();
         assert_eq!(names, ["2026-08-09"]);
+    }
+
+    #[test]
+    fn this_reaches_into_lambdas_and_spaced_names() {
+        let dir = scratch("dv-this-lambda");
+        write(
+            &dir,
+            &[
+                ("Hub.md", "---\nread goal: 20\n---\n"),
+                ("Log.md", "- [read:: 10]\n- [read:: 30]\n- [read:: 25]"),
+            ],
+        );
+        let ix = Index::build(&Vault::open(&dir).unwrap());
+        let this = ix.pages.iter().find(|p| p.name == "Hub");
+        let value = |expr: &str| {
+            let q = parse(&format!("LIST WITHOUT ID {expr} FROM \"Log\"")).unwrap();
+            match run(&q, &ix, this).unwrap() {
+                Results::List { rows, .. } => rows[0].1.as_ref().map(Value::display).unwrap(),
+                other => panic!("{other:?}"),
+            }
+        };
+        assert_eq!(value("this.read-goal"), "20");
+        assert_eq!(
+            value("length(filter(file.lists, (x) => x.read >= this.read-goal))"),
+            "2"
+        );
     }
 
     /// A vault for the newer language: groups, flattening, tasks with
@@ -2144,6 +2204,27 @@ mod tests {
             ev(&ix, d, "date(\"09.08.2026\", \"dd.MM.yyyy\").month"),
             "8"
         );
+        // Luxon's tokens: weekdays, ISO weeks and their years, the
+        // standalone month, 12-hour clocks, quoted text.
+        let f = |format: &str| {
+            ev(
+                &ix,
+                d,
+                &format!("dateformat(date(2026-10-07T15:04), \"{format}\")"),
+            )
+        };
+        assert_eq!(f("ccc"), "Wed");
+        assert_eq!(f("cccc, LLLL d"), "Wednesday, October 7");
+        assert_eq!(f("c E"), "3 3");
+        assert_eq!(f("kkkk-'W'WW"), "2026-W41");
+        assert_eq!(f("'week' W"), "week 41");
+        assert_eq!(f("h:mm a"), "3:04 PM");
+        assert_eq!(f("o"), "280");
+        assert_eq!(f("100%"), "100%");
+        // Luxon reads a year and month (or a year) as its first day.
+        assert_eq!(ev(&ix, d, "date(\"2026-09\")"), "2026-09-01");
+        assert_eq!(ev(&ix, d, "date(\"2026\")"), "2026-01-01");
+        assert_eq!(ev(&ix, d, "date(\"2026-13\")"), "-");
         assert_eq!(
             ev(&ix, d, "striptime(date(2026-08-09T10:30))"),
             "2026-08-09"

@@ -164,6 +164,27 @@ impl Tasks {
     /// The task on the active note's cursor line.
     /// The task a command works on: the query result the cursor is on (in
     /// view mode), or the task on the cursor's line.
+    /// The task at `line` of the note `rel` (in the vault), where it is.
+    fn task_at(&self, line: usize, rel: &str) -> Option<(Spot, Task)> {
+        let t = self
+            .tasks
+            .iter()
+            .find(|t| t.line == line && t.path == Path::new(rel))?;
+        Some((Spot::There(self.root.join(rel), line), t.clone()))
+    }
+
+    /// Asks how far to postpone `target`.
+    fn ask_postpone(&mut self, target: Option<(Spot, Task)>) -> Effect {
+        self.postponing = target;
+        if self.postponing.is_none() {
+            return Effect::Message("Tasks: the cursor is not on a task".into());
+        }
+        Effect::Ask(vec![Question::Choose {
+            prompt: "Postpone by".into(),
+            items: POSTPONE.iter().map(|(n, _, _)| n.to_string()).collect(),
+        }])
+    }
+
     fn target(&self, ctx: &Context) -> Option<(Spot, Task)> {
         if let Some(payload) = ctx
             .note
@@ -302,9 +323,14 @@ impl Tasks {
     /// The create-or-edit window (TK-20): every field of the task at the
     /// cursor (or of a new one), each with its value or default.
     fn ask_edit(&mut self, ctx: &Context) -> Effect {
-        // A query result the cursor is on, or the cursor's line; with no
-        // note open, a new task for today's daily note.
-        let (spot, task, line) = match (self.target(ctx), ctx.note) {
+        let target = self.target(ctx);
+        self.ask_edit_for(target, ctx)
+    }
+
+    /// The task window for `target` (a task somewhere), else the cursor's
+    /// line; with no note open, a new task for today's daily note.
+    fn ask_edit_for(&mut self, target: Option<(Spot, Task)>, ctx: &Context) -> Effect {
+        let (spot, task, line) = match (target, ctx.note) {
             (Some((Spot::There(path, at), t)), _) => {
                 let raw = t.raw.clone();
                 (Spot::There(path, at), Some(t), raw)
@@ -713,6 +739,18 @@ impl Plugin for Tasks {
         self.on_vault_changed(vault);
     }
 
+    /// The fields of a task in a note as muted chips (TK-09).
+    fn marks(&self, text: &str) -> Vec<(std::ops::Range<usize>, ratatui::style::Style)> {
+        use crate::ui::theme::{BG_RAISED, MUTED, paint};
+        let chip = ratatui::style::Style::new()
+            .fg(paint(MUTED))
+            .bg(paint(BG_RAISED));
+        task::field_spans(text)
+            .into_iter()
+            .map(|r| (r, chip))
+            .collect()
+    }
+
     fn on_unload(&mut self) {
         self.tasks.clear();
         self.cache.borrow_mut().clear();
@@ -849,14 +887,8 @@ impl Plugin for Tasks {
                 default: String::new(),
             }]),
             "postpone" => {
-                self.postponing = self.target(ctx);
-                if self.postponing.is_none() {
-                    return Effect::Message("Tasks: the cursor is not on a task".into());
-                }
-                Effect::Ask(vec![Question::Choose {
-                    prompt: "Postpone by".into(),
-                    items: POSTPONE.iter().map(|(n, _, _)| n.to_string()).collect(),
-                }])
+                let target = self.target(ctx);
+                self.ask_postpone(target)
             }
             _ => Effect::None,
         }
@@ -865,6 +897,11 @@ impl Plugin for Tasks {
     fn answer(&mut self, id: &str, answers: &[Answer], ctx: &Context) -> Effect {
         match (id, answers) {
             ("create-or-edit", _) => self.answer_edit(answers, ctx),
+            // A result's buttons asked.
+            ("row-action", [Answer::Fields(_)]) => self.answer_edit(answers, ctx),
+            ("row-action", [Answer::Choice(i)]) if self.postponing.is_some() => {
+                self.postpone(*i, ctx)
+            }
             ("postpone", [Answer::Choice(i)]) => self.postpone(*i, ctx),
             ("quick-task", [Answer::Text(text)]) => {
                 let text = text.trim();
@@ -994,7 +1031,21 @@ impl Plugin for Tasks {
         })
     }
 
-    fn row_action(&mut self, payload: &str, _ctx: &Context) -> Effect {
+    fn row_action(&mut self, payload: &str, ctx: &Context) -> Effect {
+        // A result's buttons: edit it, postpone it.
+        for (what, edit) in [("edit:", true), ("postpone:", false)] {
+            if let Some((line, rel)) = payload.strip_prefix(what).and_then(|r| r.split_once(':')) {
+                let target = line.parse().ok().and_then(|l| self.task_at(l, rel));
+                if target.is_none() {
+                    return Effect::Message("Tasks: that task isn't there any more".into());
+                }
+                return if edit {
+                    self.ask_edit_for(target, ctx)
+                } else {
+                    self.ask_postpone(target)
+                };
+            }
+        }
         let Some((line, rel)) = payload
             .strip_prefix("toggle:")
             .and_then(|r| r.split_once(':'))
