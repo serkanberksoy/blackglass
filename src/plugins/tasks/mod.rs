@@ -64,6 +64,21 @@ pub struct Tasks {
     /// The priorities and statuses in the order the questions list them.
     priority_items: Vec<Priority>,
     status_items: Vec<char>,
+    /// The tasks the window's "Blocked by" and "Blocks" choose from.
+    dependables: Vec<Task>,
+    /// The toolbar's filters (TK-42), by block ([`block_id`]).
+    filters: HashMap<String, String>,
+    /// The block whose filter is being asked for.
+    filtering: Option<String>,
+}
+
+/// A query block's name for its toolbar: its text and note, hashed.
+fn block_id(source: &str, from: Option<&Path>) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    source.hash(&mut hasher);
+    from.hash(&mut hasher);
+    format!("{:x}", hasher.finish())
 }
 
 /// Where a task being changed is.
@@ -92,6 +107,28 @@ fn split_estimate(description: &str) -> (String, String) {
             c[1].trim().to_string(),
         ),
         None => (description.to_string(), String::new()),
+    }
+}
+
+/// A task ID no task has yet: six letters and digits, as the original
+/// makes them.
+fn new_id(taken: &mut std::collections::HashSet<String>) -> String {
+    use std::hash::{BuildHasher, Hasher};
+    const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+    loop {
+        let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+        hasher.write_usize(taken.len());
+        let mut n = hasher.finish();
+        let id: String = (0..6)
+            .map(|_| {
+                let c = CHARS[(n % CHARS.len() as u64) as usize] as char;
+                n /= CHARS.len() as u64;
+                c
+            })
+            .collect();
+        if taken.insert(id.clone()) {
+            return id;
+        }
     }
 }
 
@@ -236,8 +273,14 @@ impl Tasks {
 
     fn render(&self, source: &[String], from: Option<&Path>, width: usize) -> Vec<results::Row> {
         let mut text = source.join("\n");
+        let id = block_id(&text, from);
         if let Some(rel) = from.and_then(|p| p.strip_prefix(&self.root).ok()) {
             text = placeholders(&text, rel);
+        }
+        // The toolbar's filter: the query as it is, and the description.
+        let filter = self.filters.get(&id);
+        if let Some(f) = filter {
+            text.push_str(&format!("\ndescription includes {f}"));
         }
         let today = today();
         let query = match query::parse(&text, &self.global_query, today) {
@@ -276,7 +319,55 @@ impl Tasks {
         };
         let remove = (self.remove_global_filter && !self.global_filter.is_empty())
             .then_some(self.global_filter.as_str());
-        results::run(&query, &self.tasks, &env, remove, width)
+        let rows = results::run(&query, &self.tasks, &env, remove, width);
+        if query.hidden.contains("toolbar") {
+            return rows;
+        }
+        std::iter::once(results::toolbar(&id, filter.map(String::as_str)))
+            .chain(rows)
+            .collect()
+    }
+
+    /// The results of the block `id` as Markdown (the toolbar's copy):
+    /// group headings, the tasks' lines (as indented in the tree), no
+    /// toolbar or count.
+    fn results_markdown(&self, id: &str) -> Option<String> {
+        let cache = self.cache.borrow();
+        let (_, rows) = cache
+            .iter()
+            .find(|((source, from, ..), _)| block_id(source, from.as_deref()) == id)?;
+        let mut out = String::new();
+        for (line, parts) in rows {
+            let text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+            if parts
+                .iter()
+                .any(|(.., a)| a.starts_with("plugin:tasks:filter:"))
+            {
+                continue;
+            }
+            let toggle = parts.iter().find_map(|(.., a)| {
+                let (l, rel) = a.strip_prefix("plugin:tasks:toggle:")?.split_once(':')?;
+                let l: usize = l.parse().ok()?;
+                self.tasks
+                    .iter()
+                    .find(|t| t.line == l && t.path == Path::new(rel))
+            });
+            if let Some(t) = toggle {
+                let indent = text.len() - text.trim_start().len();
+                out.push_str(&format!("{}{}\n", " ".repeat(indent), t.raw.trim_start()));
+                continue;
+            }
+            let bold =
+                |s: ratatui::style::Style| s.add_modifier.contains(ratatui::style::Modifier::BOLD);
+            let heading = bold(line.style) || line.spans.first().is_some_and(|s| bold(s.style));
+            if heading && !text.trim().is_empty() {
+                if !out.is_empty() {
+                    out.push('\n');
+                }
+                out.push_str(&format!("#### {}\n", text.trim()));
+            }
+        }
+        Some(out)
     }
 
     /// The line a toggle writes for the cursor's line: a task toggled, or
@@ -342,7 +433,7 @@ impl Tasks {
             (_, None) => (Spot::Daily, None, String::new()),
         };
         let line = line.as_str();
-        self.editing = Some((spot, task.as_ref().map(|t| t.raw.clone())));
+        self.editing = Some((spot.clone(), task.as_ref().map(|t| t.raw.clone())));
         let full = match &task {
             // Tags written after the fields too, so they stay.
             Some(t) => {
@@ -423,6 +514,44 @@ impl Tasks {
                 .position(|p| *p == priority)
                 .unwrap_or(3),
         );
+        // Dependencies (TK-20): chosen from the vault's open tasks (and
+        // those already linked), by description and note.
+        let here = match (&spot, ctx.note.and_then(|n| n.path)) {
+            (Spot::There(path, at), _) => Some((path.clone(), *at)),
+            (Spot::Here(row), Some(path)) => Some((path.to_path_buf(), *row)),
+            _ => None,
+        };
+        let id = task.as_ref().and_then(|t| t.id.clone());
+        let depends = task.as_ref().map(|t| t.depends.clone()).unwrap_or_default();
+        let waits = |o: &Task| o.id.as_ref().is_some_and(|i| depends.contains(i));
+        let blocks = |o: &Task| id.as_ref().is_some_and(|i| o.depends.contains(i));
+        self.dependables = self
+            .tasks
+            .iter()
+            .filter(|o| here.as_ref() != Some(&(self.root.join(&o.path), o.line)))
+            .filter(|o| {
+                !matches!(
+                    self.statuses.get(o.status).kind,
+                    Type::Done | Type::Cancelled
+                ) || waits(o)
+                    || blocks(o)
+            })
+            .cloned()
+            .collect();
+        let labels: Vec<String> = self
+            .dependables
+            .iter()
+            .map(|o| {
+                let note = o.path.file_stem().unwrap_or_default().to_string_lossy();
+                format!("{} · {note}", o.description)
+            })
+            .collect();
+        let chosen = |f: &dyn Fn(&Task) -> bool| {
+            (0..self.dependables.len())
+                .filter(|&i| f(&self.dependables[i]))
+                .collect::<Vec<_>>()
+        };
+        let (blocked_by, blocking) = (chosen(&waits), chosen(&blocks));
         let when = "A date: 2026-10-20, today, tomorrow, fri, next week, in 3 days (empty: none)";
         Effect::Ask(vec![Question::Form {
             title: if task.is_some() {
@@ -469,13 +598,17 @@ impl Tasks {
                         .and_then(|t| t.id.as_deref())
                         .unwrap_or_default(),
                 ),
-                FormField::text(
-                    "Depends on",
-                    "The IDs of the tasks this one waits for, separated by commas",
-                    &task
-                        .as_ref()
-                        .map(|t| t.depends.join(","))
-                        .unwrap_or_default(),
+                FormField::pick(
+                    "Blocked by",
+                    "The tasks this one waits for: type to find one, Enter adds it",
+                    labels.clone(),
+                    blocked_by,
+                ),
+                FormField::pick(
+                    "Blocks",
+                    "The tasks that wait for this one: type to find one, Enter adds it",
+                    labels,
+                    blocking,
                 ),
                 FormField::choice(
                     "On completion",
@@ -560,13 +693,12 @@ impl Tasks {
         }
         t.recurrence = Some(rule).filter(|r| !r.is_empty());
         t.id = Some(text(11)).filter(|i| !i.is_empty());
-        t.depends = text(12)
-            .split([',', ' '])
-            .map(str::trim)
-            .filter(|d| !d.is_empty())
-            .map(String::from)
-            .collect();
-        t.on_completion = match choice(13) {
+        let picked = |i: usize| match fields.get(i) {
+            Some(Answer::Choices(c)) => c.clone(),
+            _ => Vec::new(),
+        };
+        let others = self.link(&mut t, &picked(12), &picked(13));
+        t.on_completion = match choice(14) {
             1 => Some("keep".into()),
             2 => Some("delete".into()),
             _ => None,
@@ -593,7 +725,57 @@ impl Tasks {
                 .as_deref()
                 .is_some_and(|b| split_estimate(b).0.contains("::"));
         let line = write(&t, dataview);
-        Tasks::put(spot, before, line, ctx)
+        let put = Tasks::put(spot, before, line, ctx);
+        if others.is_empty() {
+            put
+        } else {
+            Effect::Many(others.into_iter().chain([put]).collect())
+        }
+    }
+
+    /// Sets `t`'s dependencies to the chosen tasks (indexes into
+    /// [`Tasks::dependables`]): it waits for `waits_for` and is waited for
+    /// by `blocks`, IDs made where needed (TK-20). Its IDs from elsewhere
+    /// (no task has them) stay. The other tasks' new lines are returned.
+    fn link(&mut self, t: &mut Task, waits_for: &[usize], blocks: &[usize]) -> Vec<Effect> {
+        let mut taken: std::collections::HashSet<String> =
+            self.tasks.iter().filter_map(|o| o.id.clone()).collect();
+        taken.extend(t.id.clone());
+        let mut others: Vec<Task> = self.dependables.clone();
+        let known: Vec<String> = others.iter().filter_map(|o| o.id.clone()).collect();
+        t.depends.retain(|d| !known.contains(d));
+        for &i in waits_for {
+            let Some(o) = others.get_mut(i) else { continue };
+            let id = o.id.get_or_insert_with(|| new_id(&mut taken)).clone();
+            if !t.depends.contains(&id) {
+                t.depends.push(id);
+            }
+        }
+        if !blocks.is_empty() && t.id.is_none() {
+            t.id = Some(new_id(&mut taken));
+        }
+        if let Some(id) = &t.id {
+            for (i, o) in others.iter_mut().enumerate() {
+                let wanted = blocks.contains(&i);
+                if wanted && !o.depends.contains(id) {
+                    o.depends.push(id.clone());
+                } else if !wanted {
+                    o.depends.retain(|d| d != id);
+                }
+            }
+        }
+        others
+            .into_iter()
+            .zip(&self.dependables)
+            .filter(|(new, old)| new != *old)
+            .map(|(new, old)| Effect::EditNote {
+                path: self.root.join(&new.path),
+                from: new.line,
+                to: new.line + 1,
+                lines: vec![write(&new, old.raw.contains("::"))],
+                expect: vec![old.raw.clone()],
+            })
+            .collect()
     }
 
     /// Postpones the cursor's task by the chosen time (TK-22).
@@ -899,6 +1081,15 @@ impl Plugin for Tasks {
             ("create-or-edit", _) => self.answer_edit(answers, ctx),
             // A result's buttons asked.
             ("row-action", [Answer::Fields(_)]) => self.answer_edit(answers, ctx),
+            ("row-action", [Answer::Text(text)]) if self.filtering.is_some() => {
+                let id = self.filtering.take().expect("checked");
+                match text.trim() {
+                    "" => self.filters.remove(&id),
+                    f => self.filters.insert(id, f.to_string()),
+                };
+                self.cache.borrow_mut().clear();
+                Effect::Redraw
+            }
             ("row-action", [Answer::Choice(i)]) if self.postponing.is_some() => {
                 self.postpone(*i, ctx)
             }
@@ -1032,6 +1223,26 @@ impl Plugin for Tasks {
     }
 
     fn row_action(&mut self, payload: &str, ctx: &Context) -> Effect {
+        // The toolbar (TK-42): filter the results, copy them.
+        if let Some(id) = payload.strip_prefix("filter:") {
+            let now = self.filters.get(id).cloned();
+            self.filtering = Some(id.to_string());
+            return Effect::Ask(vec![Question::Text {
+                prompt: match now {
+                    Some(f) => {
+                        format!("Filter the results by description (now \"{f}\"; empty: none)")
+                    }
+                    None => "Filter the results by description".into(),
+                },
+                default: String::new(),
+            }]);
+        }
+        if let Some(id) = payload.strip_prefix("copy:") {
+            return match self.results_markdown(id) {
+                Some(text) => Effect::CopyText(text),
+                None => Effect::Message("Tasks: those results aren't shown any more".into()),
+            };
+        }
         // A result's buttons: edit it, postpone it.
         for (what, edit) in [("edit:", true), ("postpone:", false)] {
             if let Some((line, rel)) = payload.strip_prefix(what).and_then(|r| r.split_once(':')) {

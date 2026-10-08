@@ -27,7 +27,7 @@ tenth of a second.
 
 <p align="center"><em>Go to a note by typing part of its name, add a task with an estimate and a date in words, and watch the query results add it up.</em></p>
 
-**Version:** 1.5.1 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
+**Version:** 1.8.0 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
 
 ## Contents
 
@@ -63,7 +63,7 @@ tenth of a second.
 
 ## Features
 
-123 of 145 tracked features are done; [the full list](documentation/features.md)
+124 of 146 tracked features are done; [the full list](documentation/features.md)
 says what each one does.
 
 ### Linked notes with live preview
@@ -110,6 +110,8 @@ says what each one does.
   dependencies, estimates; `tasks` queries across the vault; a window
   with every field (Alt+T) and a quick task into today's note (Ctrl+T);
   a task checked in a query's results stays a moment, to click again.
+- **QuickAdd captures:** a command asks a few questions and adds the
+  line to today's note under a heading (an expense, a habit, an idea).
 
 <p>
   <img src="documentation/images/detail-tasks.png" alt="Tasks with priorities, due, scheduled and start dates, recurrence and dependencies" width="420">

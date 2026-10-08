@@ -35,6 +35,30 @@ pub fn toggle_action(t: &Task) -> String {
     )
 }
 
+/// The toolbar above a block's results (TK-42): its filter (what it is,
+/// if any) and the copy button, each a part with its action.
+pub fn toolbar(id: &str, filter: Option<&str>) -> Row {
+    let find = crate::ui::theme::glyph("🔍", "[/]");
+    let copy = crate::ui::theme::glyph("⧉", "[c]");
+    let label = match filter {
+        Some(f) => format!("{find} Filter: {f}"),
+        None => format!("{find} Filter results"),
+    };
+    let copy = format!("{copy} Copy results");
+    let at = label.width() + 3;
+    (
+        Line::from(vec![
+            Span::styled(label.clone(), DIM),
+            Span::raw("   "),
+            Span::styled(copy.clone(), DIM),
+        ]),
+        vec![
+            (0, label.width(), format!("plugin:tasks:filter:{id}")),
+            (at, at + copy.width(), format!("plugin:tasks:copy:{id}")),
+        ],
+    )
+}
+
 /// Runs `query` over `tasks`.
 pub fn run(
     query: &Query,

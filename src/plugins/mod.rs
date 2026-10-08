@@ -18,6 +18,7 @@ pub mod js;
 pub mod mermaid;
 pub mod moment;
 pub mod periodic;
+pub mod quickadd;
 pub mod recent;
 pub mod settings;
 pub mod tables;
@@ -66,6 +67,32 @@ impl PluginCommand {
         self.keys = keys;
         self
     }
+}
+
+/// `name` as a command id's word (`Daily Note` → `daily-note`).
+pub(crate) fn slug(name: &str) -> String {
+    let mut out = String::new();
+    for c in name.chars() {
+        if c.is_alphanumeric() {
+            out.extend(c.to_lowercase());
+        } else if !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
+/// `text` for as long as the program runs (a command's id or name made
+/// from the settings; each text is kept once).
+pub(crate) fn intern(text: String) -> &'static str {
+    static KEPT: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+    let mut kept = KEPT.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(&s) = kept.iter().find(|&&s| s == text) {
+        return s;
+    }
+    let s: &'static str = Box::leak(text.into_boxed_str());
+    kept.push(s);
+    s
 }
 
 /// The command name answers go to after [`Plugin::on_note_created`] asked
@@ -195,9 +222,18 @@ pub enum Effect {
     /// chosen.
     RowAction(String),
     /// Put `line` in today's daily note, at the end of the list under its
-    /// `heading` (at the note's end without one); the note is made first
-    /// if it isn't there (Periodic Notes, with its template).
+    /// `heading` (the heading made at the note's end if missing; at the
+    /// note's end without one); the note is made first if it isn't there
+    /// (Periodic Notes, with its template).
     AddToDaily {
+        heading: String,
+        line: String,
+    },
+    /// Put `line` (several, split at newlines) in the note at `path`
+    /// (absolute; made if it isn't there) the way [`Effect::AddToDaily`]
+    /// does.
+    AddToNote {
+        path: PathBuf,
         heading: String,
         line: String,
     },
@@ -335,6 +371,20 @@ impl FormField {
         }
     }
 
+    /// Any of `items`, found by typing ([`FieldValue::Pick`]).
+    pub fn pick(label: &str, help: &str, items: Vec<String>, chosen: Vec<usize>) -> Self {
+        FormField {
+            label: label.into(),
+            help: help.into(),
+            value: FieldValue::Pick {
+                items,
+                chosen,
+                query: String::new(),
+                at: 0,
+            },
+        }
+    }
+
     pub fn choice(label: &str, help: &str, items: Vec<String>, chosen: usize) -> Self {
         FormField {
             label: label.into(),
@@ -353,9 +403,45 @@ pub enum FieldValue {
     Date(String),
     /// A password, shown as dots (answered as [`Answer::Text`]).
     Secret(String),
+    /// Any of `items`, found by typing (`query`): the matches show beside
+    /// the form, ↑↓ move among them (`at`), Enter adds one; Backspace
+    /// with nothing typed takes the last off (answered as
+    /// [`Answer::Choices`]).
+    Pick {
+        items: Vec<String>,
+        chosen: Vec<usize>,
+        query: String,
+        at: usize,
+    },
 }
 
 impl FieldValue {
+    /// A pick field's items matching what's typed, best first, without
+    /// those chosen already (at most `limit`).
+    pub fn matches(&self, limit: usize) -> Vec<usize> {
+        let FieldValue::Pick {
+            items,
+            chosen,
+            query,
+            ..
+        } = self
+        else {
+            return Vec::new();
+        };
+        let query = query.trim();
+        if query.is_empty() {
+            return Vec::new();
+        }
+        let mut scored: Vec<(i64, usize)> = items
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !chosen.contains(i))
+            .filter_map(|(i, item)| crate::switcher::score(item, query).map(|s| (s, i)))
+            .collect();
+        scored.sort_by_key(|&(s, i)| (std::cmp::Reverse(s), i));
+        scored.into_iter().take(limit).map(|(_, i)| i).collect()
+    }
+
     /// A date field's day: what's typed, read (`2026-10-20`, `tomorrow`).
     pub fn day(&self) -> Option<chrono::NaiveDate> {
         let FieldValue::Date(text) = self else {
@@ -722,6 +808,7 @@ pub fn catalog() -> Vec<Box<dyn Plugin>> {
         Box::new(archiver::Archiver::new()),
         Box::new(emoji::EmojiShortcodes::new()),
         Box::new(encrypt::Encrypt::new()),
+        Box::new(quickadd::QuickAdd::new()),
     ]
 }
 

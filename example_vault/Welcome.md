@@ -50,6 +50,7 @@ or off; all but Git and Recent Files are on in this vault.
 | Recent Files | [[Recent Files]] |
 | Emoji Shortcodes | [[Emoji Shortcodes]] |
 | Encrypt | [[Encrypt]] |
+| QuickAdd | [[QuickAdd]] |
 | Git | [[Git]] |
 
 ## Worked examples

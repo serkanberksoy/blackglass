@@ -22,7 +22,13 @@ with its value, or a default like no priority); "Tasks: Postpone task"
 moves it. Both work on a task in a query's results too: Alt+V to view
 mode, the cursor on the result, then the command. In the window, a date
 field shows a calendar beside it: Shift+arrows move a day or a week,
-PgUp / PgDn a month, a click picks a day.
+PgUp / PgDn a month, a click picks a day. "Blocked by" and "Blocks"
+are chosen from the vault's tasks: type a few letters, Enter adds the
+highlighted one (a task without an ID gets one).
+
+Above each query's results, a toolbar: **Filter results** shows only the
+tasks with some text in their description (the query stays as it is),
+**Copy results** copies them as Markdown. `hide toolbar` leaves it out.
 
 ## Open, by due date
 

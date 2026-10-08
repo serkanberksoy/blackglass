@@ -16,7 +16,9 @@ In the day's note (**Alt+D** opens today's), under a heading
 - [[Fun]] 28 cinema
 ```
 
-Type `[[Gro` and Enter to pick the envelope. The day is the note's, and so
+Type `[[Gro` and Enter to pick the envelope, or run the **Expense**
+capture ([[QuickAdd]]: Ctrl+P, "Expense"), which asks for the envelope,
+the amount and what for, and adds the line to today's note. The day is the note's, and so
 is the month. Besides payments:
 
 | You write | It means |

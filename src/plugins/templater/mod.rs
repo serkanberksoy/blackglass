@@ -24,13 +24,14 @@ pub mod outside;
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::time::Duration;
 
 use chrono::{DateTime, Local, NaiveDateTime};
 
 use super::settings::{Kind, Setting, Values};
-use super::{Answer, Context, Effect, Manifest, NOTE_CREATED, Plugin, PluginCommand, Question};
+use super::{
+    Answer, Context, Effect, Manifest, NOTE_CREATED, Plugin, PluginCommand, Question, intern, slug,
+};
 use crate::vault::Vault;
 use engine::{Action, Env, More, Results, RunMode, Setup, Source, Target};
 
@@ -172,32 +173,6 @@ fn list(text: &str) -> Vec<String> {
         .filter(|s| !s.is_empty())
         .map(String::from)
         .collect()
-}
-
-/// `name` as a command id's word (`Daily Note` → `daily-note`).
-fn slug(name: &str) -> String {
-    let mut out = String::new();
-    for c in name.chars() {
-        if c.is_alphanumeric() {
-            out.extend(c.to_lowercase());
-        } else if !out.ends_with('-') {
-            out.push('-');
-        }
-    }
-    out.trim_matches('-').to_string()
-}
-
-/// `text` for as long as the program runs (a command's id or name made
-/// from the settings; each text is kept once).
-fn intern(text: String) -> &'static str {
-    static KEPT: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
-    let mut kept = KEPT.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(&s) = kept.iter().find(|&&s| s == text) {
-        return s;
-    }
-    let s: &'static str = Box::leak(text.into_boxed_str());
-    kept.push(s);
-    s
 }
 
 /// A path in the vault, `/` separators.

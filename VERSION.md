@@ -1,6 +1,6 @@
 # Version history
 
-Current version: **1.5.1**
+Current version: **1.8.0**
 
 ## Versioning rules
 
@@ -28,6 +28,43 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 1.8.0 (2026-10-08)
+
+### Added
+- **A toolbar on Tasks results (TK-42), as in Tasks 7.23:** above each
+  `tasks` block's results, "Filter results" asks for text and shows only
+  the tasks whose description has it (the query stays as written; empty
+  clears it), and "Copy results" puts the results on the clipboard as
+  Markdown: the group headings and the tasks' lines, without the count.
+  `hide toolbar` leaves it out. Every Tasks requirement is now done.
+
+## 1.7.0 (2026-10-08)
+
+### Added
+- **Dependencies chosen from the vault's tasks (TK-20):** the task
+  window's "Depends on" (IDs typed) is now "Blocked by" and "Blocks":
+  type a few letters to find open tasks anywhere in the vault, Enter adds
+  the highlighted one, Backspace takes the last off. A task without an ID
+  gets one (six letters and digits, as the original makes them), written
+  in its line; a task taken off "Blocks" loses this task's ID. Forms have
+  a new field kind for this (`FormField::pick`).
+
+## 1.6.0 (2026-10-08)
+
+### Added
+- **QuickAdd (W-146), a new plugin:** captures, after QuickAdd's
+  Capture choices. A capture's format puts a line together from
+  questions asked one after the other (`{{VALUE}}`, `{{VALUE:name}}`,
+  `{{VALUE:a,b,c}}` to choose, `{{DATE:format}}`, `{{VDATE:name, format}}`
+  in words too, `{{LINKCURRENT}}`, `{{SELECTED}}`, and blackglass's
+  `{{NOTE:folder}}` to choose a note) and adds it to today's daily note
+  or a note by path (made if missing), at the end of the list under a
+  heading. Each capture is a command ("Run QuickAdd" lists them); they're
+  added and set in Settings → QuickAdd. The example vault has three:
+  Expense (a budget line), Habits today, Idea.
+- Lines added to a note under a heading (the quick task, captures) make
+  the heading at the note's end when the note hasn't got it.
 
 ## 1.5.1 (2026-10-08)
 

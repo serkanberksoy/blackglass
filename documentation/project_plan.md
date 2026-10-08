@@ -156,9 +156,9 @@ In order:
      (written to the notes' frontmatter), kanban moves, changing a view's
      sort / filters / columns / formulas in popups.
    Map view and row heights are left out (not for a terminal).
-11. 🟡 **Tasks plugin, W-78 … W-81** (M4, 0.50.0 … 0.53.0, 0.66.0, 1.1.0, 1.5.0;
-   left: choosing dependencies from a list (TK-20), the results' toolbar
-   (TK-42)). The Tasks
+11. ✅ **Tasks plugin, W-78 … W-81** (M4, 0.50.0 … 0.53.0, 0.66.0, 1.1.0,
+   1.5.0, 1.7.0, 1.8.0: every requirement in
+   `requirements/tasks_requirements.md` done). The Tasks
    community plugin's features as a blackglass plugin (`src/plugins/tasks/`).
    Today's task handling stays **core** and unchanged: checkboxes, task
    states, Ctrl+T / Ctrl+L (mdedit) and Dataview's `TASK` queries; the
@@ -320,7 +320,12 @@ In order:
     - Builds and tests: a Windows runner in GitHub Actions (with the
       macOS workflow, W-144) running the test suite and building
       `blackglass.exe` / `mdedit.exe` for every release.
-22. **Backlog 2026-10-07: mdedit on crates.io** (not started, for later):
+22. **Requested 2026-10-08:**
+    - ✅ **W-146 QuickAdd (1.6.0):** capture choices (format syntax,
+      today's daily note or a note by path, a heading made if missing),
+      each a command; for quick budget and habit lines
+      (`requirements/quickadd_requirements.md`).
+23. **Backlog 2026-10-07: mdedit on crates.io** (not started, for later):
     publish mdedit as a library on crates.io so blackglass builds without
     a `../mdedit` checkout beside it (simpler source builds, a simpler
     Homebrew formula, a step towards homebrew-core) and others can embed

@@ -1,0 +1,14 @@
+[Expense]
+format = "- [[{{NOTE:Budget/Envelopes}}]] {{VALUE:amount}} {{VALUE:what for}}"
+note = ""
+heading = "Money"
+
+[Habits today]
+format = "- [date:: {{DATE}}] [walk:: {{VALUE:walked? (true or false)}}] [meditate:: {{VALUE:meditated? (true or false)}}] [read:: {{VALUE:minutes read}}] [water:: {{VALUE:glasses of water}}]"
+note = "Habits/Habits {{DATE:YYYY-MM}}"
+heading = ""
+
+[Idea]
+format = "- {{VALUE:the idea}} (from {{LINKCURRENT}}, {{DATE:HH:mm}})"
+note = "Ideas"
+heading = "{{DATE:MMMM YYYY}}"

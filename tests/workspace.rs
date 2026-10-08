@@ -4114,7 +4114,8 @@ fn tasks_are_created_edited_and_postponed() {
         key(&mut app, KeyCode::Down); // ID
     }
     typing(&mut app, "draft1");
-    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Down); // blocked by
+    key(&mut app, KeyCode::Down); // blocks
     key(&mut app, KeyCode::Down); // on completion
     key(&mut app, KeyCode::Right); // keep
     key(&mut app, KeyCode::Enter);
@@ -7866,7 +7867,8 @@ fn a_tasks_result_is_postponed_and_edited_where_it_is() {
     );
     app.open(&note(&app, "Query.md"));
     run_palette(&mut app, "view mode");
-    // Down: the block's frame, then its first result.
+    // Down: the block's frame, its toolbar, then its first result.
+    key(&mut app, KeyCode::Down);
     key(&mut app, KeyCode::Down);
     key(&mut app, KeyCode::Down);
     run_palette(&mut app, "tasks postpone task");
@@ -9107,4 +9109,209 @@ fn task_fields_in_a_note_are_muted_chips() {
         "the tag isn't the date's"
     );
     assert!(rows[y as usize].contains("Pay rent ⏫ 🔁 every month 📅 2026-10-01"));
+}
+
+#[test]
+fn a_quickadd_capture_asks_and_adds_a_line_to_todays_note() {
+    let today = chrono::Local::now().date_naive();
+    let day = today.format("%Y-%m-%d").to_string();
+    let year = today.format("%Y").to_string();
+    let dir = vault(
+        "quickadd-capture",
+        &[
+            (
+                STATE_FILE,
+                "installed = [\"quickadd\"]\nenabled = [\"quickadd\"]\n",
+            ),
+            (
+                ".blackglass/plugins/quickadd/settings.toml",
+                "[Expense]\nformat = \"- [[{{NOTE:Budget/Envelopes}}]] {{VALUE:amount}} {{VALUE:what}}\"\nnote = \"\"\nheading = \"Money\"\n\n[Log]\nformat = \"- {{DATE:YYYY-MM-DD}} {{VALUE:size,small,big}} {{VALUE}}\"\nnote = \"Logs/{{DATE:YYYY}}.md\"\nheading = \"\"\n",
+            ),
+            ("Budget/Envelopes/Groceries.md", "monthly: 400"),
+            ("Budget/Envelopes/Fun.md", "monthly: 100"),
+            (&format!("{day}.md"), "# Today\n\n## Logs\n- woke up\n"),
+        ],
+    );
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    // Each capture is a command; its questions come one after the other.
+    run_palette(&mut app, "quickadd expense");
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(rows.contains("Groceries") && rows.contains("Fun"), "{rows}");
+    typing(&mut app, "gro");
+    key(&mut app, KeyCode::Enter);
+    typing(&mut app, "12.50");
+    key(&mut app, KeyCode::Enter);
+    typing(&mut app, "milk");
+    key(&mut app, KeyCode::Enter);
+    let text = fs::read_to_string(dir.join(format!("{day}.md"))).unwrap();
+    assert_eq!(
+        text, "# Today\n\n## Logs\n- woke up\n\n## Money\n- [[Groceries]] 12.50 milk\n",
+        "the heading is made"
+    );
+    // Again: under the heading, after its list.
+    run_palette(&mut app, "quickadd expense");
+    typing(&mut app, "fun");
+    key(&mut app, KeyCode::Enter);
+    typing(&mut app, "28");
+    key(&mut app, KeyCode::Enter);
+    typing(&mut app, "cinema");
+    key(&mut app, KeyCode::Enter);
+    let text = fs::read_to_string(dir.join(format!("{day}.md"))).unwrap();
+    assert!(
+        text.ends_with("## Money\n- [[Groceries]] 12.50 milk\n- [[Fun]] 28 cinema\n"),
+        "{text}"
+    );
+    // "Run QuickAdd" lists the captures; a note by path is made.
+    run_palette(&mut app, "quickadd run quickadd");
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(rows.contains("Expense") && rows.contains("Log"), "{rows}");
+    typing(&mut app, "log");
+    key(&mut app, KeyCode::Enter);
+    typing(&mut app, "big");
+    key(&mut app, KeyCode::Enter);
+    typing(&mut app, "a long walk");
+    key(&mut app, KeyCode::Enter);
+    let log = fs::read_to_string(dir.join(format!("Logs/{year}.md"))).unwrap();
+    assert_eq!(log, format!("- {day} big a long walk\n"));
+}
+
+#[test]
+fn task_dependencies_are_chosen_from_the_vaults_tasks() {
+    let mut app = tasks_app(
+        "tasks-depends-pick",
+        &[
+            (
+                "T.md",
+                "- [ ] Book the venue\n- [ ] Send invitations\n- [ ] Print flyers 🆔 flyers\n",
+            ),
+            ("Other.md", "- [ ] Order the cake\n"),
+        ],
+    );
+    app.open(&note(&app, "T.md"));
+    put_cursor(&mut app, 1, 0);
+    alt(&mut app, KeyCode::Char('t'));
+    for _ in 0..12 {
+        key(&mut app, KeyCode::Down); // blocked by
+    }
+    typing(&mut app, "venue");
+    let rows = screen(&mut app, 120, 40).join("\n");
+    assert!(
+        rows.contains("Blocked by") && rows.contains("Blocks"),
+        "{rows}"
+    );
+    assert!(rows.contains("Book the venue"), "a match: {rows}");
+    key(&mut app, KeyCode::Enter); // chosen, the window stays
+    let rows = screen(&mut app, 120, 40).join("\n");
+    assert!(rows.contains("Edit task"), "{rows}");
+    typing(&mut app, "cake");
+    key(&mut app, KeyCode::Enter); // a task in another note
+    key(&mut app, KeyCode::Down); // blocks
+    typing(&mut app, "flyers");
+    key(&mut app, KeyCode::Enter);
+    key(&mut app, KeyCode::Enter); // saved
+    let l = lines(&app);
+    let id_of = |line: &str| {
+        line.split("🆔 ")
+            .nth(1)
+            .map(|r| r.split_whitespace().next().unwrap().to_string())
+            .unwrap_or_else(|| panic!("an id in {line:?}"))
+    };
+    let venue = id_of(&l[0]);
+    let this = id_of(&l[1]);
+    assert_ne!(venue, this);
+    let cake_line = fs::read_to_string(note(&app, "Other.md")).unwrap();
+    let cake = id_of(&cake_line);
+    assert!(
+        l[1].contains(&format!("⛔ {venue},{cake}")),
+        "waits for both: {:?}",
+        l[1]
+    );
+    assert_eq!(l[2], format!("- [ ] Print flyers 🆔 flyers ⛔ {this}"));
+    // Edited again: what it waits for and blocks is shown, and taken off.
+    put_cursor(&mut app, 1, 0);
+    alt(&mut app, KeyCode::Char('t'));
+    let rows = screen(&mut app, 120, 40).join("\n");
+    assert!(rows.contains("Print flyers"), "blocks: {rows}");
+    for _ in 0..13 {
+        key(&mut app, KeyCode::Down); // blocks
+    }
+    key(&mut app, KeyCode::Backspace); // flyers off
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(lines(&app)[2], "- [ ] Print flyers 🆔 flyers");
+}
+
+#[test]
+fn a_tasks_toolbar_filters_and_copies_the_results() {
+    let mut app = tasks_app(
+        "tasks-toolbar",
+        &[
+            (
+                "Shop.md",
+                "- [ ] Buy milk\n- [ ] Buy bread #food\n  - [ ] Wholemeal\n",
+            ),
+            ("Work.md", "- [ ] Write the report\n"),
+            (
+                "Q.md",
+                "top\n\n```tasks\nnot done\ngroup by filename\nhide edit button\nhide postpone button\n```\n\n```tasks\nnot done\nhide toolbar\n```\n",
+            ),
+        ],
+    );
+    let copied = std::rc::Rc::new(std::cell::RefCell::new(String::new()));
+    let seen = std::rc::Rc::clone(&copied);
+    app.copier = Box::new(move |text| {
+        *seen.borrow_mut() = text.to_string();
+        Ok(())
+    });
+    app.open(&note(&app, "Q.md"));
+    let rows = screen(&mut app, 110, 30);
+    let toolbars = rows.iter().filter(|r| r.contains("Copy results")).count();
+    assert_eq!(toolbars, 1, "hide toolbar: {rows:#?}");
+    // Copy: the headings and the task lines as Markdown, no count.
+    let (x, y) = spot(&rows, "Copy results");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x, y);
+    assert_eq!(
+        *copied.borrow(),
+        "#### Shop\n- [ ] Buy milk\n- [ ] Buy bread #food\n- [ ] Wholemeal\n\n#### Work\n- [ ] Write the report\n"
+    );
+    // Filter: by description, the query unchanged.
+    let (x, y) = spot(&rows, "Filter results");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x, y);
+    typing(&mut app, "BREAD");
+    key(&mut app, KeyCode::Enter);
+    let rows = screen(&mut app, 110, 30);
+    let text = rows.join("\n");
+    assert!(
+        text.contains("Buy bread") && text.contains("Filter: BREAD"),
+        "{text}"
+    );
+    let first = rows
+        .iter()
+        .position(|r| r.contains("Copy results"))
+        .unwrap();
+    let second: Vec<&String> = rows[first..]
+        .iter()
+        .take_while(|r| !r.contains("tasks"))
+        .collect();
+    assert!(
+        !second
+            .iter()
+            .any(|r| r.contains("Buy milk") || r.contains("Write the report")),
+        "{text}"
+    );
+    assert!(
+        fs::read_to_string(note(&app, "Q.md"))
+            .unwrap()
+            .contains("group by filename\nhide"),
+        "the query is as it was"
+    );
+    // Cleared again.
+    let (x, y) = spot(&rows, "Filter: BREAD");
+    mouse(&mut app, MouseEventKind::Down(MouseButton::Left), x, y);
+    ctrl(&mut app, 'u');
+    key(&mut app, KeyCode::Enter);
+    let text = screen(&mut app, 110, 30).join("\n");
+    assert!(
+        text.contains("Write the report") && text.contains("Filter results"),
+        "{text}"
+    );
 }

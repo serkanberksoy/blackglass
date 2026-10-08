@@ -209,6 +209,9 @@ impl Ask {
                         | crate::plugins::FieldValue::Date(t)
                         | crate::plugins::FieldValue::Secret(t) => Answer::Text(t.clone()),
                         crate::plugins::FieldValue::Choice(_, i) => Answer::Choice(*i),
+                        crate::plugins::FieldValue::Pick { chosen, .. } => {
+                            Answer::Choices(chosen.clone())
+                        }
                     })
                     .collect(),
             )),
@@ -252,6 +255,47 @@ impl Ask {
             *value = FieldValue::Date(day.format("%Y-%m-%d").to_string());
             return true;
         }
+        // A pick field while something is typed: its matches.
+        if let FieldValue::Pick { .. } = value {
+            let matches = value.matches(PICK_SHOWN);
+            let FieldValue::Pick {
+                chosen, query, at, ..
+            } = value
+            else {
+                unreachable!("a pick field")
+            };
+            match key.code {
+                KeyCode::Up if !query.is_empty() => *at = at.saturating_sub(1),
+                KeyCode::Down if !query.is_empty() => {
+                    *at = (*at + 1).min(matches.len().saturating_sub(1))
+                }
+                KeyCode::Enter if !query.is_empty() => {
+                    if let Some(&i) = matches.get(*at) {
+                        chosen.push(i);
+                    }
+                    query.clear();
+                    *at = 0;
+                }
+                KeyCode::Esc if !query.is_empty() => query.clear(),
+                KeyCode::Backspace if query.is_empty() => {
+                    chosen.pop();
+                }
+                KeyCode::Backspace => {
+                    query.pop();
+                    *at = 0;
+                }
+                KeyCode::Char('u') if ctrl => query.clear(),
+                KeyCode::Char(c) if !ctrl => {
+                    query.push(c);
+                    *at = 0;
+                }
+                KeyCode::Up | KeyCode::BackTab => self.field = self.field.saturating_sub(1),
+                KeyCode::Down | KeyCode::Tab => self.field = (self.field + 1).min(n - 1),
+                KeyCode::Enter | KeyCode::Esc => return false,
+                _ => {}
+            }
+            return true;
+        }
         match (key.code, value) {
             (KeyCode::Up | KeyCode::BackTab, _) => self.field = self.field.saturating_sub(1),
             (KeyCode::Down | KeyCode::Tab, _) => self.field = (self.field + 1).min(n - 1),
@@ -292,6 +336,9 @@ impl Ask {
         true
     }
 }
+
+/// How many of a pick field's matches show.
+pub const PICK_SHOWN: usize = 8;
 
 /// What the program should do after an event.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2318,6 +2365,11 @@ impl App {
                 }
             }
             Effect::AddToDaily { heading, line } => self.add_to_daily(heading, line),
+            Effect::AddToNote {
+                path,
+                heading,
+                line,
+            } => self.add_to_note(path, heading, line),
             Effect::EditNote {
                 path,
                 from,
@@ -2729,6 +2781,26 @@ impl App {
         self.flush_daily_line();
     }
 
+    /// Puts `line` in the note at `path` under `heading`
+    /// ([`Effect::AddToNote`]), making the note first if it isn't there.
+    fn add_to_note(&mut self, path: PathBuf, heading: String, line: String) {
+        let Ok(rel) = path.strip_prefix(&self.vault.root) else {
+            self.message = format!("{} isn't in the vault", path.display());
+            return;
+        };
+        let open = self.tabs.iter().any(|v| v.path.as_deref() == Some(&path));
+        if !path.is_file() && !open {
+            let name = rel.with_extension("").to_string_lossy().replace('\\', "/");
+            let root = self.vault.root.clone();
+            if let Err(e) = self.create_note_with(&root, &name, "") {
+                self.message = e;
+                return;
+            }
+        }
+        self.daily_line = Some((path, heading, line));
+        self.flush_daily_line();
+    }
+
     /// The line waiting for today's note goes in once the note is there.
     fn flush_daily_line(&mut self) {
         let Some((path, ..)) = &self.daily_line else {
@@ -2747,12 +2819,20 @@ impl App {
             },
         };
         let (path, heading, line) = self.daily_line.take().expect("checked above");
-        let at = daily_spot(&lines, &heading);
+        let (at, mut added) = daily_spot(&lines, &heading);
+        added.extend(line.lines().map(String::from));
         let name = path
             .file_stem()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        match self.edit_note(&path, at, at, std::slice::from_ref(&line), &[]) {
+        // An empty note's one empty line is replaced.
+        let empty = lines.len() == 1 && lines[0].is_empty();
+        let (to, expect) = if empty {
+            (1, &lines[..])
+        } else {
+            (at, &[][..])
+        };
+        match self.edit_note(&path, at, to, &added, expect) {
             Ok(()) => self.message = format!("Added to {name}: {line}"),
             Err(e) => self.message = e,
         }
@@ -5115,8 +5195,10 @@ fn place_cursor(view: &mut EditorView, text: &str, offset: usize) {
 /// Whether two paths are the same file (e.g. through a symbolic link).
 /// Where a new line goes under `heading` (any level, any case): after the
 /// list right under it (or right under the heading); at the end without
-/// one (before the file's last empty line).
-fn daily_spot(lines: &[String], heading: &str) -> usize {
+/// one (before the file's last empty line), after `## heading` (and an
+/// empty line before it) when the note hasn't got it: the line's index
+/// and the lines to put before the new one.
+fn daily_spot(lines: &[String], heading: &str) -> (usize, Vec<String>) {
     let is_heading = |l: &str| l.starts_with('#') && l.trim_start_matches('#').starts_with(' ');
     let Some(h) = lines.iter().position(|l| {
         is_heading(l)
@@ -5124,10 +5206,18 @@ fn daily_spot(lines: &[String], heading: &str) -> usize {
                 .trim()
                 .eq_ignore_ascii_case(heading)
     }) else {
-        return match lines.last() {
+        let end = match lines.last() {
             Some(last) if last.is_empty() => lines.len() - 1,
             _ => lines.len(),
         };
+        let mut before = Vec::new();
+        if !heading.is_empty() {
+            if end > 0 && !lines[end - 1].trim().is_empty() {
+                before.push(String::new());
+            }
+            before.push(format!("## {heading}"));
+        }
+        return (end, before);
     };
     let mut at = h + 1;
     for (i, l) in lines.iter().enumerate().skip(h + 1) {
@@ -5139,7 +5229,7 @@ fn daily_spot(lines: &[String], heading: &str) -> usize {
             at = i + 1;
         }
     }
-    at
+    (at, Vec::new())
 }
 
 /// Whether files can be made in `folder` (a test file, made and removed).

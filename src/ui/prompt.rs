@@ -834,9 +834,12 @@ fn draw_form(
     use crate::plugins::FieldValue;
     app.areas.form_days.clear();
     let rows = fields.len() as u16;
-    // Dates: a calendar column on the right.
-    let dates = ask.form.iter().any(|v| matches!(v, FieldValue::Date(_)));
-    let widest = if dates { 64 + CALENDAR } else { 64 };
+    // Dates and picks: a column on the right (a calendar, the matches).
+    let side = ask
+        .form
+        .iter()
+        .any(|v| matches!(v, FieldValue::Date(_) | FieldValue::Pick { .. }));
+    let widest = if side { 64 + CALENDAR } else { 64 };
     let inner = frame_sized(
         buf,
         screen,
@@ -845,7 +848,7 @@ fn draw_form(
         rows.max(9) + 4,
         theme,
     )?;
-    let calendar = (dates && inner.width > CALENDAR + 30)
+    let calendar = (side && inner.width > CALENDAR + 30)
         .then(|| Rect::new(inner.right() - CALENDAR, inner.y, CALENDAR, 9));
     let full = inner;
     let inner = match calendar {
@@ -905,6 +908,58 @@ fn draw_form(
                 let text = format!("{} {item} {}", theme.glyph("‹", "<"), theme.glyph("›", ">"));
                 put(buf, x, y, &text, width, theme.on(TEXT, bg));
             }
+            FieldValue::Pick {
+                items,
+                chosen,
+                query,
+                ..
+            } => {
+                // The chosen ones, then what's typed (the end shows).
+                let names = chosen
+                    .iter()
+                    .filter_map(|&i| items.get(i).map(String::as_str))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let typed = if names.is_empty() {
+                    query.clone()
+                } else if query.is_empty() && !here {
+                    names.clone()
+                } else {
+                    format!("{names}, {query}")
+                };
+                if typed.is_empty() {
+                    put(buf, x, y, theme.glyph("—", "-"), width, theme.on(FAINT, bg));
+                    if here {
+                        cursor = Some(Position::new(x, y));
+                    }
+                } else {
+                    let len = typed.chars().count();
+                    let text: String = typed
+                        .chars()
+                        .skip(len.saturating_sub(width as usize - 1))
+                        .collect();
+                    put(buf, x, y, &text, width, theme.on(TEXT, bg));
+                    if here {
+                        cursor = Some(Position::new(x + text.chars().count() as u16, y));
+                    }
+                }
+            }
+        }
+    }
+    // The edited pick field's matches, in the side column.
+    if let (Some(area), Some(value @ FieldValue::Pick { items, at, .. })) =
+        (calendar, ask.form.get(ask.field))
+    {
+        let matches = value.matches(crate::workspace::PICK_SHOWN);
+        for (row, &i) in matches.iter().enumerate() {
+            let style = if row == *at {
+                theme.bold(ACCENT, BG_SELECTED)
+            } else {
+                theme.on(TEXT, BG_PROMPT)
+            };
+            let y = area.y + row as u16;
+            buf.set_style(Rect::new(area.x, y, area.width, 1), style);
+            put(buf, area.x + 1, y, &items[i], area.width - 1, style);
         }
     }
     // The edited date's month, its day chosen (or today's).
@@ -930,6 +985,8 @@ fn draw_form(
         rows + 3,
         if matches!(ask.form.get(ask.field), Some(FieldValue::Date(_))) {
             "↑↓ field · ⇧←→ day · ⇧↑↓ week · PgUp/PgDn month · Enter save · Esc cancel"
+        } else if matches!(ask.form.get(ask.field), Some(FieldValue::Pick { .. })) {
+            "type to find · ↑↓ match · Enter add · ⌫ take off the last · Enter save"
         } else {
             "↑↓ field  ·  ←→ choose  ·  Enter save  ·  Esc cancel"
         },

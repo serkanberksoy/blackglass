@@ -10,7 +10,9 @@ one line a day, its habits as inline fields:
 `- [date:: 2026-10-07] [walk:: true] [meditate:: false] [read:: 30] [water:: 7]`
 
 Add today's line at the end of the month's note (a new month is a new
-note, `Habits 2026-11`). The goals are this note's properties
+note, `Habits 2026-11`), or run the **Habits today** capture of
+[[QuickAdd]] (Ctrl+P, "Habits today"): it asks, adds the line, and makes
+a new month's note when there isn't one yet. The goals are this note's properties
 (`read goal`, `water goal`; **Alt+P**). Everything below is
 [[Dataview]] queries over the lines, no JavaScript.
 
