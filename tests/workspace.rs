@@ -9315,3 +9315,160 @@ fn a_tasks_toolbar_filters_and_copies_the_results() {
         "{text}"
     );
 }
+
+#[test]
+fn math_shows_as_unicode() {
+    let dir = vault(
+        "math-unicode",
+        &[(
+            "M.md",
+            "top\n\nEnergy $e = mc^2$, prices $5 and $10.\n\n$$\n\\sum_{i=1}^{n} i = \\frac{n(n+1)}{2}\n$$\n",
+        )],
+    );
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&dir.join("M.md"));
+    let text = screen(&mut app, 100, 20).join("\n");
+    assert!(
+        text.contains("Energy e = mc², prices $5 and $10."),
+        "{text}"
+    );
+    assert!(text.contains("∑ᵢ₌₁ⁿ i = (n(n+1))/2"), "{text}");
+    // The cursor in the block: its LaTeX.
+    put_cursor(&mut app, 5, 0);
+    let text = screen(&mut app, 100, 20).join("\n");
+    assert!(text.contains("\\frac{n(n+1)}{2}"), "{text}");
+}
+
+fn quickadd_app(name: &str, settings: &str, files: &[(&str, &str)]) -> (App, PathBuf) {
+    let mut all = files.to_vec();
+    all.push((
+        STATE_FILE,
+        "installed = [\"quickadd\"]\nenabled = [\"quickadd\"]\n",
+    ));
+    all.push((".blackglass/plugins/quickadd/settings.toml", settings));
+    let dir = vault(name, &all);
+    (App::new(Vault::open(&dir).unwrap()), dir)
+}
+
+#[test]
+fn quickadd_captures_go_where_they_are_told() {
+    let (mut app, dir) = quickadd_app(
+        "quickadd-places",
+        "[Here]\nformat = \"({{VALUE:what}}{{CURSOR}})\"\nactive = \"true\"\nplace = \"cursor\"\n\n\
+         [Below]\nformat = \"- {{VALUE:a,b|custom}} for {{LINKSECTION}}\"\nactive = \"true\"\nplace = \"line below cursor\"\n\n\
+         [Todo]\nformat = \"{{VALUE}}\"\nnote = \"Projects/\"\nheading = \"Inbox\"\nfirst = \"true\"\nheading_missing = \"top\"\ntask = \"true\"\nper_line = \"true\"\nlink = \"true\"\n\n\
+         [Status]\nformat = \"status: {{FIELD:status}}\"\nnote = \"Log\"\nplace = \"top\"\ncreate = \"false\"\n",
+        &[
+            ("N.md", "# Plan\nfirst line\nsecond line\n"),
+            (
+                "Projects/Alpha.md",
+                "---\nstatus: open\n---\n# Alpha\n## Inbox\n- [ ] old\n",
+            ),
+            ("Projects/Beta.md", "---\nstatus: done\n---\nIntro\n"),
+        ],
+    );
+    let n = dir.join("N.md");
+    app.open(&n);
+    // At the cursor: {{CURSOR}} leaves it inside the brackets.
+    put_cursor(&mut app, 1, 5);
+    run_palette(&mut app, "quickadd here");
+    typing(&mut app, "x");
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(lines(&app)[1], "first(x) line");
+    assert_eq!(cursor(&app), (1, 7), "before the closing bracket");
+    // A new line below the cursor; a suggestion takes new text too.
+    run_palette(&mut app, "quickadd below");
+    typing(&mut app, "zzz");
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(lines(&app)[2], "- zzz for [[N#Plan]]");
+    // A note chosen from a folder; under its heading, newest first; one
+    // task a line; a link to it where the cursor was.
+    put_cursor(&mut app, 3, 0);
+    run_palette(&mut app, "quickadd todo");
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(
+        rows.contains("Projects/Alpha") && rows.contains("Projects/Beta"),
+        "{rows}"
+    );
+    typing(&mut app, "beta");
+    key(&mut app, KeyCode::Enter);
+    typing(&mut app, "one");
+    press(&mut app, KeyCode::Enter, KeyModifiers::ALT);
+    typing(&mut app, "two");
+    key(&mut app, KeyCode::Enter);
+    let beta = fs::read_to_string(dir.join("Projects/Beta.md")).unwrap();
+    assert_eq!(
+        beta, "---\nstatus: done\n---\n## Inbox\n- [ ] one\n- [ ] two\n\nIntro\n",
+        "the heading made at the top"
+    );
+    assert!(lines(&app)[3].starts_with("[[Beta]]"), "{:?}", lines(&app));
+    run_palette(&mut app, "quickadd todo");
+    typing(&mut app, "alpha");
+    key(&mut app, KeyCode::Enter);
+    typing(&mut app, "new");
+    key(&mut app, KeyCode::Enter);
+    let alpha = fs::read_to_string(dir.join("Projects/Alpha.md")).unwrap();
+    assert!(
+        alpha.contains("## Inbox\n- [ ] new\n- [ ] old\n"),
+        "first: {alpha}"
+    );
+    // A property's values; a note that isn't there isn't made.
+    run_palette(&mut app, "quickadd status");
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(rows.contains("done") && rows.contains("open"), "{rows}");
+    key(&mut app, KeyCode::Enter);
+    assert!(!dir.join("Log.md").exists());
+    assert!(app.message.contains("isn't there"), "{}", app.message);
+}
+
+#[test]
+fn quickadd_templates_groups_and_days() {
+    let (mut app, dir) = quickadd_app(
+        "quickadd-templates",
+        "[Meeting]\ntype = \"template\"\ntemplate = \"Templates/Meeting\"\nfile_name = \"{{VALUE:topic|case:title}}\"\nfolder = \"Meetings/{{DATE:YYYY}}\"\ngroup = \"Work\"\n\n\
+         [Diary]\nformat = \"- {{DATE:YYYY-MM-DD}}: {{VALUE}}\"\nheading = \"Diary\"\nday = \"ask\"\n\n\
+         [Global variables]\nfooter = \"made {{DATE:YYYY}}\"\n",
+        &[(
+            "Templates/Meeting.md",
+            "# {{TITLE}}\nWhen: {{DATE}}\nWith: {{VALUE:who}}\n{{GLOBAL_VAR:footer}}",
+        )],
+    );
+    let today = chrono::Local::now().date_naive();
+    let year = today.format("%Y").to_string();
+    // A group, then its template choice; its tokens asked too.
+    run_palette(&mut app, "quickadd run quickadd");
+    let rows = screen(&mut app, 100, 24).join("\n");
+    assert!(rows.contains("Work ▸") && rows.contains("Diary"), "{rows}");
+    typing(&mut app, "work");
+    key(&mut app, KeyCode::Enter);
+    key(&mut app, KeyCode::Enter); // Meeting
+    typing(&mut app, "budget review");
+    key(&mut app, KeyCode::Enter);
+    typing(&mut app, "Ada");
+    key(&mut app, KeyCode::Enter);
+    let made = dir.join(format!("Meetings/{year}/Budget Review.md"));
+    let text = fs::read_to_string(&made).unwrap();
+    assert_eq!(
+        text,
+        format!("# Budget Review\nWhen: {today}\nWith: Ada\nmade {year}")
+    );
+    assert_eq!(active_path(&app).as_deref(), Some(made.as_path()), "opened");
+    // Again: a number, the name being taken.
+    run_palette(&mut app, "quickadd meeting");
+    typing(&mut app, "budget review");
+    key(&mut app, KeyCode::Enter);
+    key(&mut app, KeyCode::Enter);
+    assert!(
+        dir.join(format!("Meetings/{year}/Budget Review 1.md"))
+            .is_file()
+    );
+    // Which day: asked first; the dates and the daily note are its.
+    run_palette(&mut app, "quickadd diary");
+    typing(&mut app, "yesterday");
+    key(&mut app, KeyCode::Enter);
+    typing(&mut app, "rain");
+    key(&mut app, KeyCode::Enter);
+    let yesterday = today.pred_opt().unwrap();
+    let note = fs::read_to_string(dir.join(format!("{yesterday}.md"))).unwrap();
+    assert_eq!(note, format!("## Diary\n- {yesterday}: rain\n"));
+}

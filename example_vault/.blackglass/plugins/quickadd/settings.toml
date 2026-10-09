@@ -1,14 +1,36 @@
 [Expense]
-format = "- [[{{NOTE:Budget/Envelopes}}]] {{VALUE:amount}} {{VALUE:what for}}"
+format = "- [[{{FILE:Budget/Envelopes}}]] {{VALUE:amount}} {{VALUE:what for}}"
 note = ""
 heading = "Money"
+group = "Log"
 
 [Habits today]
 format = "- [date:: {{DATE}}] [walk:: {{VALUE:walked? (true or false)}}] [meditate:: {{VALUE:meditated? (true or false)}}] [read:: {{VALUE:minutes read}}] [water:: {{VALUE:glasses of water}}]"
 note = "Habits/Habits {{DATE:YYYY-MM}}"
 heading = ""
+group = "Log"
 
 [Idea]
-format = "- {{VALUE:the idea}} (from {{LINKCURRENT}}, {{DATE:HH:mm}})"
+format = "- {{VALUE:the idea}} (from {{LINKCURRENT}}, {{TIME}})"
 note = "Ideas"
 heading = "{{DATE:MMMM YYYY}}"
+first = "true"
+heading_missing = "top"
+
+[Tasks for a project]
+format = "{{VALUE}}"
+note = "Plugins/Bases/Projects/"
+heading = "Tasks"
+task = "true"
+per_line = "true"
+
+[New book]
+type = "template"
+template = "Templates/New book"
+file_name = "{{VALUE:title}}"
+folder = "Books"
+exists = "open"
+group = "Reading"
+
+[Global variables]
+signature = "— added {{DATE:D MMMM YYYY}}"

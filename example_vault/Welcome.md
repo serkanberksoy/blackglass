@@ -26,7 +26,7 @@ Every page below shows one thing with something to try.
 The `Formatting/` folder shows everything a note can be written with:
 [[Headings and sections]], [[Text styles]], [[Lists]] and tasks,
 [[Quotes and callouts]], [[Code blocks]], [[Tables]],
-[[Footnotes and comments]].
+[[Footnotes and comments]], [[Math]].
 
 ## The plugins
 

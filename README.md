@@ -27,7 +27,7 @@ tenth of a second.
 
 <p align="center"><em>Go to a note by typing part of its name, add a task with an estimate and a date in words, and watch the query results add it up.</em></p>
 
-**Version:** 1.8.0 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
+**Version:** 1.10.0 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
 
 ## Contents
 
@@ -63,15 +63,15 @@ tenth of a second.
 
 ## Features
 
-124 of 146 tracked features are done; [the full list](documentation/features.md)
+125 of 146 tracked features are done; [the full list](documentation/features.md)
 says what each one does.
 
 ### Linked notes with live preview
 
 <img src="documentation/images/workspace.png" alt="The workspace: a file explorer with colored folders, tabs, and a note rendered as you type" width="880">
 
-- **Live preview:** headings, tables, callouts, tasks, highlights, images
-  and embeds rendered as you type, the Markdown right there on the line
+- **Live preview:** headings, tables, callouts, tasks, highlights, images,
+  math (`$e = mc^2$` as e = mc²) and embeds rendered as you type, the Markdown right there on the line
   you're editing. Source and read-only view modes too (Alt+V).
 - **Links that find notes anywhere:** `[[Note]]`, `[[Note#Heading]]`,
   `[[Note#^block]]`, suggested as you type; backlinks and unlinked
@@ -110,8 +110,9 @@ says what each one does.
   dependencies, estimates; `tasks` queries across the vault; a window
   with every field (Alt+T) and a quick task into today's note (Ctrl+T);
   a task checked in a query's results stays a moment, to click again.
-- **QuickAdd captures:** a command asks a few questions and adds the
-  line to today's note under a heading (an expense, a habit, an idea).
+- **QuickAdd:** a command asks a few questions and adds the line to
+  today's note, or a note you choose, under a heading (an expense, a
+  habit, an idea); or makes a new note from a template.
 
 <p>
   <img src="documentation/images/detail-tasks.png" alt="Tasks with priorities, due, scheduled and start dates, recurrence and dependencies" width="420">

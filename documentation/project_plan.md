@@ -15,7 +15,7 @@ editor. Features and their tests: `requirements/features.md`.
 | **M5** AI | An AI plugin: chat with a model about the notes, custom commands and Quick Ask in the note, coding agents (Claude Code …) working in the vault, inline edits with a diff, vault search (after Claudian and Copilot for Obsidian) | W-82 … W-87 | ⬜ (requested 2026-09-30) |
 | **M6** Appearance | Color themes: a default theme file, five example themes, a palette command to choose one | W-69 … W-71 | ✅ 0.44.0 … 0.46.0, 0.64.0 (the editor's colors, mdedit 3.8.0) |
 | **M7** More plugins | Advanced Tables (tables edited as tables, formulas) | W-90 … W-92 | ✅ 0.47.0 … 0.49.0, 0.63.3, 0.67.0 |
-| **M8** Later | Notes side by side (split panes), math, a graph view, file recovery, publishing, a web clipper | W-112 … W-117 | ⬜ (requested 2026-09-30) |
+| **M8** Later | Notes side by side (split panes), math, a graph view, file recovery, publishing, a web clipper | W-112 … W-117 | 🟡 math 1.9.0 (requested 2026-09-30) |
 
 ### Execution queue (requested 2026-09-29)
 
@@ -210,8 +210,9 @@ In order:
       transpose, export as CSV; a table controls panel in the sidebar.
     - **W-92 formulas:** `<!-- TBLFM: … -->` lines: cell and range
       references, `sum` / `mean`, `if`, formats, chaining.
-14. ⬜ **Later, W-112 … W-117** (M8, prioritized 2026-09-30): notes side
-    by side (split panes, then saved workspaces), math (`$…$` as Unicode),
+14. 🟡 **Later, W-112 … W-117** (M8, prioritized 2026-09-30): notes side
+    by side (split panes, then saved workspaces), ✅ math (`$…$` as
+    Unicode, 1.9.0, mdedit 3.23.0),
     a graph view (a note's links as a text tree, the vault's as a map),
     file recovery (snapshots of notes), publishing (the vault as a static
     web site), a web clipper (a URL into a note).

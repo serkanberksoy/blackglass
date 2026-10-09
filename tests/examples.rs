@@ -169,9 +169,9 @@ fn every_template_in_the_example_vault_renders() {
                 break output;
             }
             answers.extend(output.questions[answers.len()..].iter().map(|q| match q {
-                Question::Text { default, .. } | Question::Lines { default, .. } => {
-                    Answer::Text(default.clone())
-                }
+                Question::Text { default, .. }
+                | Question::Lines { default, .. }
+                | Question::Suggest { default, .. } => Answer::Text(default.clone()),
                 Question::Choose { .. } | Question::Show { .. } => Answer::Choice(0),
                 Question::Many { .. } => Answer::Choices(Vec::new()),
                 Question::Form { .. } => Answer::Fields(Vec::new()),

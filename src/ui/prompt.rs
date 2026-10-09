@@ -1148,8 +1148,11 @@ fn draw_ask(
             );
             cursor
         }
-        Question::Choose { prompt, items } | Question::Many { prompt, items } => {
+        Question::Choose { prompt, items }
+        | Question::Many { prompt, items }
+        | Question::Suggest { prompt, items, .. } => {
             let many = matches!(ask.current(), Question::Many { .. });
+            let suggest = matches!(ask.current(), Question::Suggest { .. });
             let list_rows = (ask.results.len().max(1) as u16)
                 .min(screen.height.saturating_sub(8))
                 .min(14);
@@ -1173,7 +1176,11 @@ fn draw_ask(
                     buf,
                     list.x,
                     list.y,
-                    "Nothing matches",
+                    if suggest {
+                        "Type a value"
+                    } else {
+                        "Nothing matches"
+                    },
                     list.width,
                     theme.on(MUTED, BG_PROMPT),
                 );
@@ -1185,7 +1192,8 @@ fn draw_ask(
                     BG_PROMPT
                 };
                 buf.set_style(Rect::new(list.x, y, list.width, 1), theme.on(TEXT, bg));
-                let item = &items[ask.results[row]];
+                let typed = format!("{}  (new)", ask.input.trim());
+                let item = items.get(ask.results[row]).unwrap_or(&typed);
                 let item = if many {
                     let marked = ask.marked.contains(&ask.results[row]);
                     format!("{} {item}", if marked { "[x]" } else { "[ ]" })

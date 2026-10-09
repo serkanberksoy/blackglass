@@ -230,13 +230,36 @@ pub enum Effect {
         line: String,
     },
     /// Put `line` (several, split at newlines) in the note at `path`
-    /// (absolute; made if it isn't there) the way [`Effect::AddToDaily`]
-    /// does.
+    /// (absolute; `None`: `day`'s daily note) at `place`; a note that
+    /// isn't there is made (with `new_text`). `link`: a link to the note
+    /// goes in at the active note's cursor first; `open`: the note is
+    /// opened after.
     AddToNote {
-        path: PathBuf,
-        heading: String,
+        path: Option<PathBuf>,
+        day: chrono::NaiveDate,
+        place: Place,
         line: String,
+        new_text: String,
+        open: bool,
+        link: bool,
     },
+}
+
+/// Where a line goes in a note ([`Effect::AddToNote`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Place {
+    /// At the end of the list under the heading `name` (`first`: right
+    /// under the heading); the heading is made, at the note's top
+    /// (`make_at_top`) or end, if it isn't there. An empty name: the end.
+    Heading {
+        name: String,
+        first: bool,
+        make_at_top: bool,
+    },
+    /// The note's top (after its frontmatter).
+    Top,
+    /// The note's end.
+    Bottom,
 }
 
 /// What a plugin suggests while typing ([`Plugin::suggestions`]): the
@@ -312,6 +335,14 @@ pub enum Question {
     Text { prompt: String, default: String },
     /// Choose one of `items` (type to filter).
     Choose { prompt: String, items: Vec<String> },
+    /// Choose one of `items` (type to filter), or take what's typed when
+    /// it isn't one of them: answered as [`Answer::Text`]; Enter with
+    /// nothing typed and nothing to choose takes `default`.
+    Suggest {
+        prompt: String,
+        items: Vec<String>,
+        default: String,
+    },
     /// Type several lines (Alt+Enter starts a new one); Enter with nothing
     /// typed takes `default`.
     Lines { prompt: String, default: String },

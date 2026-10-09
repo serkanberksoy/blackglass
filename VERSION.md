@@ -1,6 +1,6 @@
 # Version history
 
-Current version: **1.8.0**
+Current version: **1.10.0**
 
 ## Versioning rules
 
@@ -28,6 +28,46 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 1.10.0 (2026-10-08)
+
+### Added
+- **QuickAdd, the rest of the original (W-146,
+  `requirements/quickadd_requirements.md`):**
+  - **Template choices:** a new note from a template (its `{{…}}` asked
+    too), its name and folder as formats; a taken name gets a number, or
+    the note is opened or added to; a link to it at the cursor.
+  - **Groups** ("Run QuickAdd" shows a group, then its choices) and
+    **global variables** (`{{GLOBAL_VAR:name}}`).
+  - **Captures:** into the active note (at the cursor, where `{{CURSOR}}`
+    leaves it, or a new line below or above it), a note chosen from a
+    folder or a tag, or a note by path; at the top, the bottom, or under
+    a heading (newest first, or at the end of its list; a missing heading
+    made at the top or the bottom); create the note or not (from a
+    template); as tasks; one entry per line typed; which day (asked);
+    a link to the note; open it after.
+  - **Format syntax:** `{{VALUE:x|default}}`, `|label:`,
+    `|type:multiline`, `|custom` (choose or type), `|multi`, `|case:`;
+    `{{FIELD:property}}` (its values in the vault, with folder and tag
+    filters, inline fields too); `{{FILE:folder}}` (`|link`, `|path`,
+    `|multi`, `|optional`); `{{DATE+3}}`, `{{TIME}}`, `|startof:` /
+    `|endof:`; `{{LINKSECTION}}`, `{{FILENAMECURRENT}}`,
+    `{{FOLDERCURRENT}}`, `{{TITLE}}`, `{{FOLDER}}`, `{{RANDOM:n}}`,
+    `{{MVALUE}}`, `{{TEMPLATE:path}}`.
+- Questions can suggest values and take new text too (`Question::Suggest`).
+- The example vault's choices: Expense and Habits today (a Log group), Idea,
+  Tasks for a project, and New book (a template choice, for the reading
+  tracker).
+
+## 1.9.0 (2026-10-08)
+
+### Added
+- **Math as Unicode (W-113):** `$e = mc^2$` reads e = mc², and `$$`
+  blocks (`\sum_{i=1}^{n}` as ∑ᵢ₌₁ⁿ) too: Greek letters, operators,
+  relations and arrows, superscripts and subscripts, `\frac`, `\sqrt`,
+  `\mathbb`, `\text`, through mdedit 3.23.0. Prices like `$5 and $10`
+  stay text; the LaTeX shows while the cursor is on it. A new example
+  page, `Formatting/Math`.
 
 ## 1.8.0 (2026-10-08)
 

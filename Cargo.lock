@@ -336,7 +336,7 @@ dependencies = [
 
 [[package]]
 name = "blackglass"
-version = "1.8.0"
+version = "1.10.0"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",
@@ -1825,7 +1825,7 @@ dependencies = [
 
 [[package]]
 name = "mdedit"
-version = "3.22.0"
+version = "3.23.0"
 dependencies = [
  "emojis",
  "image",

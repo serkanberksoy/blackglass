@@ -23,7 +23,9 @@ use crate::commands::{self, Command, Host, Palette};
 use crate::keymap::{self, Chord, Keymap};
 use crate::link_suggest::{self, Suggest};
 use crate::plugins::settings::{Setting, Values};
-use crate::plugins::{ActiveNote, Answer, Blocks, Context, Effect, Plugins, Question};
+use crate::plugins::{
+    ActiveNote, Answer, Blocks, Context, Effect, Place as LinePlace, Plugins, Question,
+};
 use crate::resolver::VaultResolver;
 pub use crate::settings_window::{Page, SettingsWindow};
 use crate::sidebar::{Panel, Request, Sidebar};
@@ -162,7 +164,10 @@ impl Ask {
             self.form = fields.iter().map(|f| f.value.clone()).collect();
             self.field = 0;
         }
-        let (Question::Choose { items, .. } | Question::Many { items, .. }) = self.current() else {
+        let (Question::Choose { items, .. }
+        | Question::Many { items, .. }
+        | Question::Suggest { items, .. }) = self.current()
+        else {
             return;
         };
         let query = self.input.trim();
@@ -179,6 +184,14 @@ impl Ask {
             .collect();
         scored.sort_by_key(|&(s, i)| (std::cmp::Reverse(s), i));
         self.results = scored.into_iter().map(|(_, i)| i).collect();
+        // A suggestion's own text: `items.len()` stands for what's typed.
+        if let Question::Suggest { items, .. } = self.current()
+            && !query.is_empty()
+            && !items.iter().any(|i| i.eq_ignore_ascii_case(query))
+        {
+            let typed = items.len();
+            self.results.insert(0, typed);
+        }
     }
 
     /// The answer Enter gives now, if any.
@@ -193,6 +206,14 @@ impl Ask {
                 Some(Answer::Text(self.input.clone()))
             }
             Question::Choose { .. } => self.results.get(self.selected).map(|&i| Answer::Choice(i)),
+            Question::Suggest { items, default, .. } => {
+                Some(Answer::Text(match self.results.get(self.selected) {
+                    Some(&i) if i < items.len() => items[i].clone(),
+                    Some(_) => self.input.trim().to_string(),
+                    None if self.input.trim().is_empty() => default.clone(),
+                    None => self.input.trim().to_string(),
+                }))
+            }
             Question::Many { .. } if !self.marked.is_empty() => {
                 Some(Answer::Choices(self.marked.clone()))
             }
@@ -481,7 +502,7 @@ pub struct App {
     creating_day: Option<String>,
     /// A line waiting for today's daily note to be made: the note, the
     /// heading it goes under, the line.
-    daily_line: Option<(PathBuf, String, String)>,
+    daily_line: Option<PendingLine>,
     /// The unsaved text last put in the index: its note and a hash.
     synced: Option<(PathBuf, u64)>,
     /// Watches the vault for changes made elsewhere.
@@ -2367,9 +2388,13 @@ impl App {
             Effect::AddToDaily { heading, line } => self.add_to_daily(heading, line),
             Effect::AddToNote {
                 path,
-                heading,
+                day,
+                place,
                 line,
-            } => self.add_to_note(path, heading, line),
+                new_text,
+                open,
+                link,
+            } => self.add_to_note(path, day, place, line, new_text, (link, open)),
             Effect::EditNote {
                 path,
                 from,
@@ -2757,21 +2782,61 @@ impl App {
     /// (its folder, name and template; it may take a moment, then
     /// [`App::tick`] finishes), else as `YYYY-MM-DD.md` in the vault.
     fn add_to_daily(&mut self, heading: String, line: String) {
+        let place = LinePlace::Heading {
+            name: heading,
+            first: false,
+            make_at_top: false,
+        };
         let today = chrono::Local::now().date_naive();
-        let daily = self.plugins.borrow().daily_note(today);
-        let rel = daily
-            .clone()
-            .unwrap_or_else(|| today.format("%Y-%m-%d").to_string());
-        let path = self.vault.root.join(format!("{rel}.md"));
-        self.daily_line = Some((path.clone(), heading, line));
-        let open = self.tabs.iter().any(|v| v.path.as_deref() == Some(&path));
-        if !path.is_file() && !open {
+        self.add_to_note(None, today, place, line, String::new(), (false, false));
+    }
+
+    /// Puts `line` in the note at `path` (`None`: `day`'s daily note) at
+    /// `place` ([`Effect::AddToNote`]), making the note first if it isn't
+    /// there; `(link, open)`: a link to it at the cursor first, the note
+    /// opened after.
+    fn add_to_note(
+        &mut self,
+        path: Option<PathBuf>,
+        day: chrono::NaiveDate,
+        place: LinePlace,
+        line: String,
+        new_text: String,
+        (link, open): (bool, bool),
+    ) {
+        let daily = path
+            .is_none()
+            .then(|| self.plugins.borrow().daily_note(day))
+            .flatten();
+        let path = path.unwrap_or_else(|| {
+            let rel = daily
+                .clone()
+                .unwrap_or_else(|| day.format("%Y-%m-%d").to_string());
+            self.vault.root.join(format!("{rel}.md"))
+        });
+        let Ok(rel) = path.strip_prefix(&self.vault.root).map(Path::to_path_buf) else {
+            self.message = format!("{} isn't in the vault", path.display());
+            return;
+        };
+        if link {
+            let name = path.file_stem().unwrap_or_default().to_string_lossy();
+            self.insert(&format!("[[{name}]]"), 0);
+        }
+        self.daily_line = Some(PendingLine {
+            path: path.clone(),
+            place,
+            line,
+            open,
+        });
+        let is_open = self.tabs.iter().any(|v| v.path.as_deref() == Some(&path));
+        if !path.is_file() && !is_open {
             if daily.is_some() {
-                let day = today.format("%Y-%m-%d");
+                let day = day.format("%Y-%m-%d");
                 self.row_action(&format!("plugin:periodic-notes:open-day:{day}"));
             } else {
+                let name = rel.with_extension("").to_string_lossy().replace('\\', "/");
                 let root = self.vault.root.clone();
-                if let Err(e) = self.create_note_with(&root, &rel, "") {
+                if let Err(e) = self.create_note_with(&root, &name, &new_text) {
                     self.message = e;
                     self.daily_line = None;
                     return;
@@ -2781,29 +2846,9 @@ impl App {
         self.flush_daily_line();
     }
 
-    /// Puts `line` in the note at `path` under `heading`
-    /// ([`Effect::AddToNote`]), making the note first if it isn't there.
-    fn add_to_note(&mut self, path: PathBuf, heading: String, line: String) {
-        let Ok(rel) = path.strip_prefix(&self.vault.root) else {
-            self.message = format!("{} isn't in the vault", path.display());
-            return;
-        };
-        let open = self.tabs.iter().any(|v| v.path.as_deref() == Some(&path));
-        if !path.is_file() && !open {
-            let name = rel.with_extension("").to_string_lossy().replace('\\', "/");
-            let root = self.vault.root.clone();
-            if let Err(e) = self.create_note_with(&root, &name, "") {
-                self.message = e;
-                return;
-            }
-        }
-        self.daily_line = Some((path, heading, line));
-        self.flush_daily_line();
-    }
-
-    /// The line waiting for today's note goes in once the note is there.
+    /// The line waiting for its note goes in once the note is there.
     fn flush_daily_line(&mut self) {
-        let Some((path, ..)) = &self.daily_line else {
+        let Some(PendingLine { path, .. }) = &self.daily_line else {
             return;
         };
         let tab = self
@@ -2818,9 +2863,15 @@ impl App {
                 Err(_) => return,
             },
         };
-        let (path, heading, line) = self.daily_line.take().expect("checked above");
-        let (at, mut added) = daily_spot(&lines, &heading);
+        let PendingLine {
+            path,
+            place,
+            line,
+            open,
+        } = self.daily_line.take().expect("checked above");
+        let (at, mut added, after) = note_spot(&lines, &place);
         added.extend(line.lines().map(String::from));
+        added.extend(after);
         let name = path
             .file_stem()
             .map(|n| n.to_string_lossy().into_owned())
@@ -2833,8 +2884,16 @@ impl App {
             (at, &[][..])
         };
         match self.edit_note(&path, at, to, &added, expect) {
-            Ok(()) => self.message = format!("Added to {name}: {line}"),
+            Ok(()) => {
+                self.message = format!(
+                    "Added to {name}: {}",
+                    line.lines().next().unwrap_or_default()
+                )
+            }
             Err(e) => self.message = e,
+        }
+        if open && self.open(&path) {
+            self.sidebar.reveal(&path, &self.vault);
         }
     }
 
@@ -5017,8 +5076,10 @@ impl App {
                     );
                 }
                 Some(Prompt::Ask(mut ask))
-                    if matches!(ask.current(), Question::Choose { .. })
-                        && row < ask.results.len() =>
+                    if matches!(
+                        ask.current(),
+                        Question::Choose { .. } | Question::Suggest { .. }
+                    ) && row < ask.results.len() =>
                 {
                     // As if chosen with the arrows and Enter.
                     ask.selected = row;
@@ -5193,32 +5254,52 @@ fn place_cursor(view: &mut EditorView, text: &str, offset: usize) {
 }
 
 /// Whether two paths are the same file (e.g. through a symbolic link).
-/// Where a new line goes under `heading` (any level, any case): after the
-/// list right under it (or right under the heading); at the end without
-/// one (before the file's last empty line), after `## heading` (and an
-/// empty line before it) when the note hasn't got it: the line's index
-/// and the lines to put before the new one.
-fn daily_spot(lines: &[String], heading: &str) -> (usize, Vec<String>) {
-    let is_heading = |l: &str| l.starts_with('#') && l.trim_start_matches('#').starts_with(' ');
-    let Some(h) = lines.iter().position(|l| {
-        is_heading(l)
-            && l.trim_start_matches('#')
-                .trim()
-                .eq_ignore_ascii_case(heading)
-    }) else {
-        let end = match lines.last() {
-            Some(last) if last.is_empty() => lines.len() - 1,
-            _ => lines.len(),
-        };
-        let mut before = Vec::new();
-        if !heading.is_empty() {
-            if end > 0 && !lines[end - 1].trim().is_empty() {
-                before.push(String::new());
-            }
-            before.push(format!("## {heading}"));
-        }
-        return (end, before);
+/// Where new lines go for `place` (headings at any level, any case):
+/// under a heading, after the list right under it (or right under the
+/// heading, `first`); a missing heading is made (with an empty line
+/// before it) at the end, or at the top; the end (before the file's last
+/// empty line); the top (after the frontmatter). The line's index, and
+/// the lines to put before and after the new ones.
+fn note_spot(lines: &[String], place: &LinePlace) -> (usize, Vec<String>, Vec<String>) {
+    let end = match lines.last() {
+        Some(last) if last.is_empty() => lines.len() - 1,
+        _ => lines.len(),
     };
+    let top = crate::vault::properties::frontmatter_end(lines).map_or(0, |e| e + 1);
+    let (name, first, make_at_top) = match place {
+        LinePlace::Top => return (top, Vec::new(), Vec::new()),
+        LinePlace::Bottom => return (end, Vec::new(), Vec::new()),
+        LinePlace::Heading {
+            name,
+            first,
+            make_at_top,
+        } => (name.as_str(), *first, *make_at_top),
+    };
+    let is_heading = |l: &str| l.starts_with('#') && l.trim_start_matches('#').starts_with(' ');
+    let Some(h) = lines
+        .iter()
+        .position(|l| is_heading(l) && l.trim_start_matches('#').trim().eq_ignore_ascii_case(name))
+    else {
+        if name.is_empty() {
+            return (end, Vec::new(), Vec::new());
+        }
+        if make_at_top {
+            let after = match lines.get(top) {
+                Some(l) if !l.trim().is_empty() && top < end => vec![String::new()],
+                _ => Vec::new(),
+            };
+            return (top, vec![format!("## {name}")], after);
+        }
+        let mut before = Vec::new();
+        if end > 0 && !lines[end - 1].trim().is_empty() {
+            before.push(String::new());
+        }
+        before.push(format!("## {name}"));
+        return (end, before, Vec::new());
+    };
+    if first {
+        return (h + 1, Vec::new(), Vec::new());
+    }
     let mut at = h + 1;
     for (i, l) in lines.iter().enumerate().skip(h + 1) {
         if is_heading(l) {
@@ -5229,7 +5310,17 @@ fn daily_spot(lines: &[String], heading: &str) -> (usize, Vec<String>) {
             at = i + 1;
         }
     }
-    (at, Vec::new())
+    (at, Vec::new(), Vec::new())
+}
+
+/// A line waiting for its note ([`Effect::AddToNote`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PendingLine {
+    path: PathBuf,
+    place: LinePlace,
+    line: String,
+    /// Opened once the line is in.
+    open: bool,
 }
 
 /// Whether files can be made in `folder` (a test file, made and removed).
