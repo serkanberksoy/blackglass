@@ -94,3 +94,12 @@ Colors are fitted to the terminal: true color, 256 or 16 colors. Where
 Unicode symbols can't be shown, ASCII ones are used instead. A terminal
 with true color and a Nerd Font (or another font with box drawing and
 emoji) looks best.
+
+## Windows
+
+Windows Terminal and the Windows console (Windows 10 and later) show every
+color, and blackglass knows them without `TERM` or `COLORTERM`. The
+mouse's back and forward buttons don't reach programs in a Windows
+terminal (crossterm reads only the left, middle and right buttons there);
+`blackglass-window.exe` (or `blackglass --gui`) has them. Ctrl+Shift
+shortcuts depend on the terminal: Windows Terminal passes most of them.

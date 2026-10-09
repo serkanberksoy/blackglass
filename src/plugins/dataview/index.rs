@@ -510,7 +510,10 @@ mod tests {
         assert_eq!(index.pages.len(), 1);
         write(&dir, &[("C.md", "")]);
         vault.rescan().unwrap();
-        index.update(&vault, &dir.canonicalize().unwrap().join("C.md"));
+        index.update(
+            &vault,
+            &mdedit::platform::canonical(&dir).unwrap().join("C.md"),
+        );
         assert_eq!(index.pages.len(), 2);
     }
 

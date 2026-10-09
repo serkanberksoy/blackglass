@@ -16,9 +16,12 @@ pub mod cli;
 pub mod commands;
 pub mod config;
 pub mod example;
+#[cfg(feature = "gui")]
+pub mod gui;
 pub mod highlights;
 pub mod journal;
 pub mod keymap;
+pub mod launch;
 pub mod link_suggest;
 pub mod nldates;
 pub mod note_ids;
@@ -30,12 +33,14 @@ pub mod resolver;
 pub mod session;
 pub mod settings_window;
 pub mod sidebar;
+pub mod startup;
 pub mod switcher;
 pub mod tag_suggest;
 pub mod ui;
 pub mod vault;
 pub mod vault_picker;
 pub mod watch;
+pub mod window_settings;
 pub mod words;
 pub mod workspace;
 

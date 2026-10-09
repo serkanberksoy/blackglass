@@ -148,8 +148,14 @@ switches between live preview, source mode (every line raw) and view mode
   **Git: History**). With
   Periodic Notes, **Alt+D** opens today's note (created from its
   template).
-- Your settings are saved in `~/.config/blackglass/`: `config.toml` (the
+- Your settings are saved in `~/.config/blackglass/` (`%APPDATA%\blackglass\`
+  on Windows): `config.toml` (the
   editor) and `keys.toml` (only the shortcuts you changed). A plugin's
   settings are saved in the vault, in `.blackglass/plugins/`.
+- **A window of its own:** `blackglass --gui` runs this same app in a
+  window (the default when started from a launcher; `--terminal` keeps
+  the terminal). There, the settings' Window page sets the font and its
+  size (`window.toml`), images show as pictures and emoji in color, and
+  Ctrl+C copies the selection.
 
 **{quit}** quits; it asks first about unsaved changes.

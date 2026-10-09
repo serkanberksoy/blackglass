@@ -33,7 +33,7 @@ fn report(what: &str, took: Duration) {
 fn big_vault() -> PathBuf {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("perf-vault");
     if dir.join("done").exists() {
-        return dir.canonicalize().unwrap();
+        return mdedit::platform::canonical(&dir).unwrap();
     }
     let _ = fs::remove_dir_all(&dir);
     for i in 0..NOTES {
@@ -74,7 +74,7 @@ fn big_vault() -> PathBuf {
     )
     .unwrap();
     fs::write(dir.join("done"), "").unwrap();
-    dir.canonicalize().unwrap()
+    mdedit::platform::canonical(&dir).unwrap()
 }
 
 fn draw(app: &mut App, t: &mut Terminal<TestBackend>) {

@@ -46,7 +46,7 @@ fn example(name: &str) -> PathBuf {
         .expect("cp runs");
     assert!(status.success());
     let _ = fs::remove_file(dir.join(".blackglass/workspace.json"));
-    dir.canonicalize().unwrap()
+    mdedit::platform::canonical(&dir).unwrap()
 }
 
 fn out_dir() -> PathBuf {

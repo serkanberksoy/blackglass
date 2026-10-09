@@ -997,11 +997,7 @@ impl Bases {
             (None, Some(path)) => path.with_extension("csv"),
             (None, None) => ctx.folder.join("base.csv"),
         };
-        let name = file
-            .strip_prefix(&self.root)
-            .unwrap_or(&file)
-            .to_string_lossy()
-            .into_owned();
+        let name = crate::vault::slash(file.strip_prefix(&self.root).unwrap_or(&file));
         match mdedit::files::write_atomic(&file, &csv) {
             Ok(()) => Effect::FilesChanged(format!("Bases: the view is in {name}")),
             Err(e) => Effect::Message(format!("Bases: cannot write {name}: {e}")),

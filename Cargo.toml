@@ -1,6 +1,6 @@
 [package]
 name = "blackglass"
-version = "1.10.0"
+version = "1.12.0"
 edition = "2024"
 rust-version = "1.88"
 description = "A note vault in the terminal, with mdedit as its editor"
@@ -37,6 +37,35 @@ serde_json = "1.0.151"
 unicode-segmentation = "1.13"
 unicode-width = "0.2.2"
 yaml-rust2 = "0.13.0"
+# The window (`--gui`, the `gui` feature): eframe (egui) draws the same
+# ratatui screens with its GPU text, on macOS, Windows and Linux. Left out
+# of the static terminal build (`--no-default-features`).
+eframe = { version = "0.34", optional = true, default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+# Images in the window: the editor's images come as iTerm2 images (PNG),
+# decoded and drawn as textures. The same versions mdedit uses.
+image = { version = "0.25", optional = true, default-features = false, features = ["png"] }
+ratatui-image = { version = "11.1.0", optional = true, default-features = false }
+# Color emoji in the window: shaped (swash) and drawn (vello_cpu: COLR v0 /
+# v1 and bitmap fonts) from the system's color emoji font; egui draws only
+# one-color glyphs.
+swash = { version = "0.2", optional = true }
+vello_cpu = { version = "0.3", optional = true }
+
+[[bin]]
+name = "blackglass"
+path = "src/main.rs"
+
+# Windows: the window without a console window behind it (the release's
+# `blackglass-window.exe`).
+[[bin]]
+name = "blackglass-window"
+path = "src/bin/window.rs"
+required-features = ["windows-launcher"]
+
+[features]
+default = ["gui"]
+windows-launcher = ["gui"]
+gui = ["dep:eframe", "dep:image", "dep:ratatui-image", "dep:swash", "dep:vello_cpu"]
 
 # `cargo run` and the tests are much faster with basic optimizations, which
 # keeps a large vault responsive in development builds too (as in mdedit).

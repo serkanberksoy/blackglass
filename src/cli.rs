@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 /// The help text for `--help`.
 pub const USAGE: &str = "\
-blackglass: a note vault in the terminal
+blackglass: a note vault in the terminal, or in a window
 
 Usage: blackglass [OPTIONS] [FOLDER | NOTE]
        blackglass --example [FOLDER]
@@ -21,6 +21,9 @@ Options:
                   FOLDER, or ~/blackglass-example, and open it; a copy
                   already there is opened as it is
   --no-mouse      leave the mouse to the terminal (select text as usual)
+  --gui           open in a window of its own (the default when started
+                  from a launcher, not a terminal)
+  --terminal      run in the terminal (the default in a terminal)
   -h, --help      show this help
   -V, --version   show the version
 
@@ -96,7 +99,8 @@ setting, Left / Right choose a value, typing searches, Esc goes back.
   notes visited lately (Enter opens one, Delete takes it off).
 
 Settings (Alt+,) are saved in $XDG_CONFIG_HOME/blackglass/ (or
-~/.config/blackglass/): config.toml has the editor's settings, which are
+~/.config/blackglass/; %APPDATA%\\blackglass\\ on Windows): config.toml
+has the editor's settings, which are
 mdedit's (until it exists, mdedit's config.toml is read; see `mdedit
 --help`), and keys.toml the changed shortcuts (new-note = \"Alt+N\").
 ";
@@ -110,6 +114,31 @@ pub struct Cli {
     pub mouse: bool,
     pub help: bool,
     pub version: bool,
+    /// `--gui` / `--terminal`: which front end (`None`: by where it runs).
+    pub asked: Option<Front>,
+}
+
+/// Where blackglass runs: in the terminal, or in a window of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Front {
+    Terminal,
+    Window,
+}
+
+impl Cli {
+    /// The front end: as asked, else the terminal when it was started in
+    /// one (`tty`) and the window when it wasn't (a launcher); the window
+    /// only if it's built in (`built`).
+    pub fn front(&self, tty: bool, built: bool) -> Result<Front, String> {
+        match self.asked {
+            Some(Front::Window) if !built => {
+                Err("this blackglass is built without the window (the gui feature)".into())
+            }
+            Some(front) => Ok(front),
+            None if tty || !built => Ok(Front::Terminal),
+            None => Ok(Front::Window),
+        }
+    }
 }
 
 /// Parses the arguments (without the program name).
@@ -122,6 +151,17 @@ pub fn parse(args: impl IntoIterator<Item = String>) -> Result<Cli, String> {
         match arg.as_str() {
             "--no-mouse" => cli.mouse = false,
             "--example" => cli.example = true,
+            "--gui" | "--terminal" => {
+                let front = if arg == "--gui" {
+                    Front::Window
+                } else {
+                    Front::Terminal
+                };
+                if cli.asked.is_some_and(|f| f != front) {
+                    return Err("--gui or --terminal, not both".into());
+                }
+                cli.asked = Some(front);
+            }
             "-h" | "--help" => cli.help = true,
             "-V" | "--version" => cli.version = true,
             s if s.starts_with('-') && s.len() > 1 => {
@@ -161,6 +201,23 @@ mod tests {
         let cli = args(&["--example", "tour"]).unwrap();
         assert!(cli.example);
         assert_eq!(cli.path, Some(PathBuf::from("tour")));
+    }
+
+    #[test]
+    fn the_window_or_the_terminal() {
+        use Front::{Terminal, Window};
+        let front = |list: &[&str], tty: bool, built: bool| args(list).unwrap().front(tty, built);
+        // Without an option: a terminal keeps it, else the window.
+        assert_eq!(front(&[], true, true), Ok(Terminal));
+        assert_eq!(front(&[], false, true), Ok(Window));
+        assert_eq!(front(&[], false, false), Ok(Terminal), "no window built in");
+        assert_eq!(front(&["--gui"], true, true), Ok(Window));
+        assert_eq!(front(&["--terminal"], false, true), Ok(Terminal));
+        assert!(
+            front(&["--gui"], true, false).is_err(),
+            "asked, not built in"
+        );
+        assert!(args(&["--gui", "--terminal"]).is_err());
     }
 
     #[test]

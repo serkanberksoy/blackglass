@@ -204,7 +204,7 @@ impl Plugin for Dataview {
         };
         let text = std::fs::read_to_string(&page.path).unwrap_or_default();
         let Some(old) = text
-            .split('\n')
+            .lines()
             .nth(line)
             .map(|l| l.trim_end_matches('\r').to_string())
         else {

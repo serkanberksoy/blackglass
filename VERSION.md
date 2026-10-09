@@ -1,6 +1,6 @@
 # Version history
 
-Current version: **1.10.0**
+Current version: **1.12.0**
 
 ## Versioning rules
 
@@ -28,6 +28,64 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 1.12.0 (2026-10-09)
+
+### Added
+- **Windows (W-145):** blackglass runs on Windows, in Windows Terminal or
+  the console (every color) and in its window.
+  - Settings, keys, the theme and recent vaults are kept in
+    `%APPDATA%\blackglass`; `~` is `%USERPROFILE%`.
+  - The clipboard through PowerShell; files and links open with `start`;
+    the Git plugin's script and Templater's user commands run in `cmd`
+    (`%name%` for a variable).
+  - Paths in the vault are written with `/` everywhere (links, the
+    session, the status bar, queries), and paths without Windows' `\\?\`
+    prefix; a link finds its note's own spelling on a disk that ignores
+    case (macOS's too).
+  - Notes with Windows line ends (`\r\n`) keep them when changed or
+    saved, and plugins read them like any other.
+  - A release zip (`scripts/release-windows.sh`): `blackglass.exe` (the
+    terminal, or `--gui`) and `blackglass-window.exe` (the window with no
+    console behind it, to double-click), with the example vault.
+  - Every test runs on Windows (checked under Wine; the Git and curl tests
+    skip where those programs aren't), and the gate lints the Windows
+    build.
+- Uses mdedit 3.24.0 (its `platform` module: one place for what differs
+  between Linux, macOS and Windows).
+
+## 1.11.0 (2026-10-09)
+
+### Added
+- **A window of its own (W-147):** `blackglass --gui` opens the same app
+  in a window, on macOS, Windows and Linux: every screen, key and plugin
+  as in the terminal, drawn by eframe (egui) with its GPU text. Started
+  from a launcher it opens the window; in a terminal it stays there
+  (`--terminal` asks for it).
+  - **Fonts:** a font setting (Settings → Window: the family and the
+    size), with the family's real bold, italic and bold italic faces
+    (by default DejaVu Sans Mono, Noto Sans Mono, Adwaita Mono, Liberation
+    Mono, Menlo or Consolas, the first there); the system's fonts fill in
+    the symbols it hasn't got.
+  - **Images** as pictures, and **color emoji** (joined emoji and flags
+    too), drawn from the system's color emoji font.
+  - **The clipboard:** Ctrl+C copies the selection, and what blackglass
+    copies goes on the window's clipboard.
+  - **The mouse's** back / forward buttons work everywhere.
+  - **An icon, and launchers:** `scripts/install-desktop.sh` (Linux's
+    applications menu), `scripts/macos-app.sh` (a macOS `blackglass.app`,
+    universal too); the Linux release has a window build beside the
+    static terminal one.
+  - Tested without a display: the window's real frames run headless
+    (keys, text, the mouse, copy and paste, closing, sizes, fonts, images,
+    emoji, the picker), and `tests/window.rs` opens the real window
+    (`--ignored`, on a display).
+  - The window is the `gui` cargo feature (on by default); the static
+    Linux build is the terminal one (`--no-default-features`). It
+    compiles for Windows and macOS; Windows' other gaps (W-145: settings
+    folder, opening files, commands) remain.
+- Starting up (the first run's example vault, opening a vault, the
+  user's settings) is shared by both (`startup`).
 
 ## 1.10.0 (2026-10-08)
 

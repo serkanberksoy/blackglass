@@ -181,7 +181,7 @@ impl VaultPicker {
     /// Enter; a file is refused.
     fn open(&mut self, target: PathBuf) -> Picked {
         if target.is_dir() {
-            return match target.canonicalize() {
+            return match mdedit::platform::canonical(&target) {
                 Ok(path) => Picked::Open(path),
                 Err(e) => {
                     self.note = format!("Cannot open {}: {e}", self.shown(&target));
@@ -239,7 +239,7 @@ mod tests {
         assert_eq!(p.rows, recent, "the recent vaults");
         assert_eq!(
             press(&mut p, KeyCode::Enter),
-            Picked::Open(home.join("Work").canonicalize().unwrap())
+            Picked::Open(mdedit::platform::canonical(&home.join("Work")).unwrap())
         );
         typing(&mut p, "~/No");
         assert_eq!(
@@ -251,7 +251,7 @@ mod tests {
         assert_eq!(p.input, "~/Notes/");
         assert_eq!(
             press(&mut p, KeyCode::Enter),
-            Picked::Open(home.join("Notes").canonicalize().unwrap())
+            Picked::Open(mdedit::platform::canonical(&home.join("Notes")).unwrap())
         );
         assert_eq!(press(&mut p, KeyCode::Esc), Picked::Cancel);
         for c in ['q', 'c'] {

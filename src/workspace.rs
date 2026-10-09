@@ -108,6 +108,8 @@ pub enum Target {
     Notes,
     /// The vault's natural language dates (`.blackglass/dates.toml`).
     Dates,
+    /// The window's (`window.toml`, in the user's config folder).
+    Window,
     /// A plugin's, by its index in the plugins list.
     Plugin(usize),
 }
@@ -529,6 +531,10 @@ pub struct App {
     /// A plugin asked to quit (and nothing unsaved is left); the main loop
     /// stops.
     pub quit_requested: bool,
+    /// Running in a window of its own (`--gui`): its settings page shows.
+    pub windowed: bool,
+    /// The window's settings ([`crate::window_settings`]).
+    window: crate::window_settings::Settings,
     /// The user's blackglass config folder (`~/.config/blackglass`), where
     /// settings are saved; `None` (as in tests until set) saves nothing.
     pub config_dir: Option<PathBuf>,
@@ -578,6 +584,8 @@ impl App {
             keymap,
             config_dir: None,
             quit_requested: false,
+            windowed: false,
+            window: crate::window_settings::Settings::default(),
             backlinks: false,
             backlink: 0,
             backlinks_cache: None,
@@ -1804,7 +1812,15 @@ impl App {
     /// [`App::with_context`] with the new note's name already typed.
     fn with_context_named<R>(&self, name: Option<&str>, f: impl FnOnce(&Context) -> R) -> R {
         let view = self.tabs.get(self.active);
-        let text = view.map(|v| v.editor.to_text());
+        // Plugins read lines ending in `\n` (a `\r\n` note's too).
+        let text = view.map(|v| {
+            let text = v.editor.to_text();
+            if v.editor.crlf {
+                text.replace("\r\n", "\n")
+            } else {
+                text
+            }
+        });
         let selection = view.and_then(|v| v.editor.selected_text());
         let selected = view.and_then(|v| v.editor.selection());
         let action = view.and_then(|v| v.read_action(&self.shared));
@@ -2947,9 +2963,11 @@ impl App {
             return Err(CHANGED.into());
         }
         all.splice(from..to, lines.iter().cloned());
-        let mut text = all.join("\n");
+        // The note's own line ends (`\r\n` from Windows).
+        let ending = if text.contains("\r\n") { "\r\n" } else { "\n" };
+        let mut text = all.join(ending);
         if !text.is_empty() {
-            text.push('\n');
+            text.push_str(ending);
         }
         self.journal.touch(path);
         mdedit::files::write_atomic(path, &text)
@@ -3307,6 +3325,11 @@ impl App {
                 crate::nldates::Settings::schema(),
                 crate::nldates::Settings::values(&self.vault),
             ),
+            Target::Window => (
+                "Window".into(),
+                crate::window_settings::Settings::schema(),
+                crate::window_settings::Settings::values(self.config_dir.as_deref()),
+            ),
             Target::Plugin(i) => {
                 let plugins = self.plugins.borrow();
                 let name = plugins.manifest(i).map_or("", |m| m.name);
@@ -3338,6 +3361,19 @@ impl App {
                 let text = values.to_text(&crate::note_ids::NoteIds::settings());
                 mdedit::files::write_atomic(&path, &text)
                     .map_err(|e| format!("Cannot save notes.toml: {e}"))
+            }
+            Target::Window => {
+                use crate::window_settings::{FILE, Settings};
+                let Some(dir) = self.config_dir.clone() else {
+                    return Err("No config folder to save the window's settings in".into());
+                };
+                let mut values = Settings::values(Some(&dir));
+                values.set("", &setting.key, value);
+                std::fs::create_dir_all(&dir).map_err(|e| format!("Cannot save {FILE}: {e}"))?;
+                mdedit::files::write_atomic(&dir.join(FILE), &values.to_text(&Settings::schema()))
+                    .map_err(|e| format!("Cannot save {FILE}: {e}"))?;
+                self.window = Settings::load(Some(&dir));
+                Ok(())
             }
             Target::Dates => {
                 let mut values = crate::nldates::Settings::values(&self.vault);
@@ -3398,6 +3434,7 @@ impl App {
         let Some(dir) = self.config_dir.clone() else {
             return;
         };
+        self.window = crate::window_settings::Settings::load(Some(&dir));
         if let Some(id) = theme::saved(&dir.join(APPEARANCE_FILE)) {
             let warnings = self.use_theme(&id);
             self.theme = id;
@@ -4086,7 +4123,11 @@ impl App {
         }
         let links = self.apply_moves(vec![(from.to_path_buf(), to.to_path_buf())], from, to)?;
         let rel = to.strip_prefix(&self.vault.root).unwrap_or(to);
-        self.message = format!("Moved {} to {}{links}", file_name(from), rel.display());
+        self.message = format!(
+            "Moved {} to {}{links}",
+            file_name(from),
+            crate::vault::slash(rel)
+        );
         Ok(())
     }
 
@@ -4427,7 +4468,7 @@ impl App {
             let shown = if rel.as_os_str().is_empty() {
                 "/".to_string()
             } else {
-                format!("{}/", rel.display())
+                format!("{}/", crate::vault::slash(rel))
             };
             out.push((folder.path.clone(), shown));
             for sub in &folder.folders {
@@ -5129,21 +5170,15 @@ impl App {
     }
 }
 
-/// Opens `path` with the desktop's default program (`xdg-open`, or
-/// `open` on macOS), without waiting for it.
 /// Puts `text` on the clipboard with the first tool that works:
-/// `wl-copy` (Wayland), `xclip` or `xsel` (X11), `pbcopy` (macOS).
+/// `wl-copy` (Wayland), `xclip` or `xsel` (X11), `pbcopy` (macOS),
+/// PowerShell (Windows) ([`mdedit::platform::copy_tools`]).
 fn copy_outside(text: &str) -> Result<(), String> {
     use std::io::Write;
     use std::process::{Command, Stdio};
-    const TOOLS: [&[&str]; 4] = [
-        &["wl-copy"],
-        &["xclip", "-selection", "clipboard"],
-        &["xsel", "--clipboard", "--input"],
-        &["pbcopy"],
-    ];
-    for tool in TOOLS {
-        let Ok(mut child) = Command::new(tool[0])
+    let tools = mdedit::platform::copy_tools(mdedit::platform::Os::this());
+    for tool in &tools {
+        let Ok(mut child) = Command::new(&tool[0])
             .args(&tool[1..])
             .stdin(Stdio::piped())
             .stdout(Stdio::null())
@@ -5160,17 +5195,19 @@ fn copy_outside(text: &str) -> Result<(), String> {
             return Ok(());
         }
     }
-    Err("no clipboard tool (install wl-clipboard or xclip)".into())
+    Err(if cfg!(windows) {
+        "no clipboard tool (PowerShell)".into()
+    } else {
+        "no clipboard tool (install wl-clipboard or xclip)".into()
+    })
 }
 
+/// Opens `path` with the desktop's default program (`xdg-open`; `open` on
+/// macOS; `start` on Windows), without waiting for it.
 fn open_outside(path: &Path) -> Result<(), String> {
-    let program = if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    std::process::Command::new(program)
-        .arg(path)
+    let mut command = mdedit::platform::open(&path.to_string_lossy());
+    let program = command.get_program().to_string_lossy().into_owned();
+    command
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -5338,7 +5375,10 @@ fn writable(folder: &Path) -> bool {
 }
 
 fn same_file(a: &Path, b: &Path) -> bool {
-    match (a.canonicalize(), b.canonicalize()) {
+    match (
+        mdedit::platform::canonical(a),
+        mdedit::platform::canonical(b),
+    ) {
         (Ok(a), Ok(b)) => a == b,
         _ => false,
     }
@@ -5425,4 +5465,11 @@ pub enum PaneItem {
     Backlink(crate::backlinks::Backlink),
     Mention(crate::backlinks::Backlink),
     Outgoing(crate::backlinks::Outgoing),
+}
+
+impl App {
+    /// The window's settings (its font and text size).
+    pub fn window_settings(&self) -> crate::window_settings::Settings {
+        self.window.clone()
+    }
 }

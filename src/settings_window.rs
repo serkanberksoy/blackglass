@@ -21,6 +21,8 @@ pub enum Page {
     Notes,
     /// Natural language dates.
     Dates,
+    /// The window's (`--gui`): its font and text size.
+    Window,
     /// Every command's keys.
     Shortcuts,
     /// The plugins: install, uninstall, enable, disable.
@@ -161,6 +163,13 @@ impl App {
                 title: "Dates".into(),
             },
         ];
+        if self.windowed {
+            all.push(NavItem {
+                group: OPTIONS,
+                page: Page::Window,
+                title: "Window".into(),
+            });
+        }
         let plugins = self.plugins.borrow();
         for (i, status) in plugins.statuses().iter().enumerate() {
             if status.installed && !plugins.settings(i).is_empty() {
@@ -182,6 +191,7 @@ impl App {
             Page::Editor => "Editor".into(),
             Page::Notes => "Notes".into(),
             Page::Dates => "Dates".into(),
+            Page::Window => "Window".into(),
             Page::Shortcuts => "Keyboard shortcuts".into(),
             Page::Plugins => "Plugins".into(),
             Page::Plugin(i) => self
@@ -211,6 +221,7 @@ impl App {
             Page::Editor => settings(Target::Editor),
             Page::Notes => settings(Target::Notes),
             Page::Dates => settings(Target::Dates),
+            Page::Window => settings(Target::Window),
             Page::Plugin(i) => settings(Target::Plugin(i)),
             Page::Shortcuts => self
                 .all_commands()
@@ -424,6 +435,7 @@ impl App {
             Page::Plugin(i) => Target::Plugin(i),
             Page::Notes => Target::Notes,
             Page::Dates => Target::Dates,
+            Page::Window => Target::Window,
             _ => Target::Editor,
         };
         if let Err(e) = self.set_setting(target, setting, value) {

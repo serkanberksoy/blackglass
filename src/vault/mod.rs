@@ -80,8 +80,20 @@ impl Note {
     /// Its path relative to the vault, without `.md` (`Journal/2026-08-09`),
     /// as the quick switcher and search show it.
     pub fn rel_name(&self) -> String {
-        let rel = self.rel.to_string_lossy();
+        let rel = slash(&self.rel);
         rel.strip_suffix(".md").unwrap_or(&rel).to_string()
+    }
+}
+
+/// A path in the vault as text, its folders separated by `/` on every
+/// system (as links, the session and queries write them): Windows' `\`
+/// becomes `/`; elsewhere `\` is a character a name may have.
+pub fn slash(path: &Path) -> String {
+    let text = path.to_string_lossy();
+    if cfg!(windows) {
+        text.replace('\\', "/")
+    } else {
+        text.into_owned()
     }
 }
 
@@ -111,7 +123,7 @@ impl Vault {
     /// Scans the folder at `root`. `Err` if it isn't a readable folder;
     /// unreadable files and sub-folders inside it are skipped.
     pub fn open(root: &Path) -> io::Result<Vault> {
-        let root = root.canonicalize()?;
+        let root = mdedit::platform::canonical(root)?;
         if !root.is_dir() {
             return Err(io::Error::new(
                 io::ErrorKind::NotADirectory,

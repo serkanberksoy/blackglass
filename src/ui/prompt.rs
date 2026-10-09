@@ -47,7 +47,10 @@ pub fn draw(buf: &mut Buffer, screen: Rect, app: &mut App, theme: &Theme) -> Opt
         Prompt::NewNote { folder, input } => {
             let place = match folder.strip_prefix(&app.vault.root) {
                 Ok(rel) if !rel.as_os_str().is_empty() => {
-                    format!("In {}/  (a / in the name makes folders)", rel.display())
+                    format!(
+                        "In {}/  (a / in the name makes folders)",
+                        crate::vault::slash(rel)
+                    )
                 }
                 _ => format!("In {}/  (a / in the name makes folders)", app.vault.name()),
             };

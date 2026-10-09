@@ -8,6 +8,7 @@ to try each one.
 | Area | What you get |
 |------|--------------|
 | File explorer | Folders open and close; each top-level folder has its own color (a rainbow); sort by name or date |
+| A window of its own | `blackglass --gui`: the same app in a window on macOS, Windows and Linux, with your font (Settings → Window: family and size, real bold and italic), images as pictures, color emoji and the window's clipboard; `--terminal` (the default in a terminal) runs it in the terminal; `scripts/install-desktop.sh` adds it to Linux's applications menu, `scripts/macos-app.sh` makes a macOS app |
 | Vaults | Any folder is a vault: started without one, blackglass lists the recent vaults and takes any folder's path (Tab completes, a new folder is made after asking); "Open vault" in the palette switches at any time |
 | Tabs | One editor per note, an unsaved dot, close buttons, `+` for a new note; an open note reuses its tab; the open tabs and folders come back next time; notes changed elsewhere (a sync tool, Git) are picked up |
 | Editor | Everything mdedit does: live preview, tables, callouts, tasks, images, footnotes, `%%comments%%`, math as Unicode (`$e = mc^2$` as e = mc²), search and replace, undo, folding, emoji; notes, sections and blocks (`![[Note#^id]]`) embedded from anywhere in the vault |

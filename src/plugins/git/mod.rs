@@ -1063,8 +1063,7 @@ fn commit(
     let mut full = match text {
         Some(t) => t.to_string(),
         None if !settings.script.trim().is_empty() => {
-            let out = Command::new("sh")
-                .args(["-c", &settings.script])
+            let out = mdedit::platform::shell(&settings.script)
                 .current_dir(root)
                 .output()
                 .map_err(|e| format!("the message script: {e}"))?;

@@ -1,14 +1,14 @@
 <h1 align="center">blackglass</h1>
 
 <p align="center">
-  <strong>Your second brain, in the terminal. Free, open source, and fast.</strong>
+  <strong>Your second brain, in the terminal or its own window. Free, open source, and fast.</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/serkanberksoy/blackglass/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/serkanberksoy/blackglass?color=7c5cff"></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-2ea44f"></a>
   <img alt="Written in Rust" src="https://img.shields.io/badge/written%20in-Rust-dea584">
-  <img alt="Linux and macOS" src="https://img.shields.io/badge/runs%20on-Linux%20%7C%20macOS-555">
+  <img alt="Linux, macOS and Windows" src="https://img.shields.io/badge/runs%20on-Linux%20%7C%20macOS%20%7C%20Windows-555">
 </p>
 
 **blackglass** is a note-taking workspace for people who live in the
@@ -16,7 +16,8 @@ terminal: developers, sysadmins, writers on a server, anyone who'd rather
 not leave the keyboard. Point it at a folder of Markdown files and you
 get a linked knowledge base with live preview, backlinks, tags, search,
 queries over your notes, tasks, kanban boards and templates, all in one
-15 MB program. It exists because a second brain shouldn't need a
+small program, in the terminal or in a window of its own, on Linux,
+macOS and Windows. It exists because a second brain shouldn't need a
 browser engine, an account or a subscription: your notes stay plain
 Markdown files, and blackglass opens a 5,000-note vault in about a
 tenth of a second.
@@ -27,7 +28,7 @@ tenth of a second.
 
 <p align="center"><em>Go to a note by typing part of its name, add a task with an estimate and a date in words, and watch the query results add it up.</em></p>
 
-**Version:** 1.10.0 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
+**Version:** 1.12.0 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
 
 ## Contents
 
@@ -52,18 +53,20 @@ tenth of a second.
 - **Fast, really.** Written in Rust. On a vault of 5,000 notes it opens
   in about a tenth of a second, answers a keystroke (redrawn screen
   included) in about 1 ms (3 ms in a 10,000-line note), and searches
-  every note in 14 ms. One 15 MB
-  program, no runtime, no browser engine.
-- **Anywhere you have a shell.** Over SSH on a server, in a tmux pane, on
-  a laptop with no window manager. The keyboard drives everything (every
-  command can have your own keys), and the mouse works too.
+  every note in 14 ms. One program of about 15–20 MB, no runtime, no
+  browser engine.
+- **Anywhere you have a shell, or a desktop.** Over SSH on a server, in a
+  tmux pane, on a laptop with no window manager; or in its own window
+  with your fonts, pictures and color emoji (`--gui`), on Linux, macOS
+  and Windows. The keyboard drives everything (every command can have
+  your own keys), and the mouse works too.
 - **Plugins included, not hunted for.** Queries, templates, tasks,
   database views, Git backup, diagrams, tables and more are built in, and
   switched on when you want them.
 
 ## Features
 
-125 of 146 tracked features are done; [the full list](documentation/features.md)
+126 of 147 tracked features are done; [the full list](documentation/features.md)
 says what each one does.
 
 ### Linked notes with live preview
@@ -197,6 +200,20 @@ chmod +x blackglass
 sudo mv blackglass /usr/local/bin/        # or ~/.local/bin
 ```
 
+### Windows (x86_64)
+
+Download `blackglass-<version>-x86_64-windows.zip` from the
+[latest release](https://github.com/serkanberksoy/blackglass/releases/latest)
+and unzip it anywhere:
+
+- **`blackglass-window.exe`** opens blackglass in its window: double-click
+  it, or pin it to the Start menu or the taskbar.
+- **`blackglass.exe`** runs in Windows Terminal (or the console):
+  `blackglass.exe C:\Users\you\Notes`, `--example` for the tour.
+
+Settings are kept in `%APPDATA%\blackglass`. Windows may warn that the
+program isn't signed: "More info", then "Run anyway".
+
 ### From source (Linux, macOS)
 
 blackglass builds with Rust **1.88 or newer** ([rustup](https://rustup.rs)).
@@ -211,18 +228,37 @@ cd blackglass
 cargo install --path .             # into ~/.cargo/bin
 ```
 
+### In a window
+
+blackglass can also open in a window of its own, with your font, real
+pictures and color emoji, on macOS, Windows and Linux:
+
+```bash
+blackglass --gui ~/Notes           # a window; --terminal for the terminal
+```
+
+Started from a terminal it stays in the terminal; from a launcher it
+opens the window. Settings → Window sets the font and its size.
+
+- **Linux:** the release's `…-linux-gui.tar.gz` has the window build;
+  its `scripts/install-desktop.sh` adds blackglass to the applications
+  menu. (The single `blackglass` download is the static terminal
+  version.)
+- **macOS:** Homebrew's build has the window; `scripts/macos-app.sh` in a
+  source checkout makes a `blackglass.app` for the Dock.
+
 ### Requirements
 
-Any terminal on Linux or macOS; one with true color and a Nerd Font (or
-another font with box drawing and emoji) looks best, and plain ASCII
-works too. Some terminals keep keys or mouse buttons for themselves:
+Any terminal on Linux or macOS, Windows Terminal or the Windows console;
+one with true color and a Nerd Font (or another font with box drawing and
+emoji) looks best, and plain ASCII works too. Some terminals keep keys or mouse buttons for themselves:
 [documentation/terminals.md](documentation/terminals.md) says what works
 where. Optional programs it uses when they're there:
 
 | Program | For |
 |---------|-----|
-| `wl-paste` / `xclip` / `xsel` (Linux) | The clipboard (paste, copied links) |
-| `xdg-open` / `open` | Web links, images and PDFs in their own programs |
+| `wl-paste` / `xclip` / `xsel` (Linux), PowerShell (Windows) | The clipboard (paste, copied links) |
+| `xdg-open` / `open` (Windows: built in) | Web links, images and PDFs in their own programs |
 | `git` | The Git plugin |
 | `curl` | Templater's `tp.web` (a daily quote, web requests) |
 

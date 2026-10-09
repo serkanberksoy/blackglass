@@ -187,7 +187,7 @@ fn draw_notes(frame: &mut Frame, area: Rect, app: &mut App, theme: &Theme) {
         .path
         .as_deref()
         .and_then(|p| p.strip_prefix(&app.vault.root).ok())
-        .map(|p| p.to_string_lossy().into_owned());
+        .map(crate::vault::slash);
     let name = shown.unwrap_or_default();
     let name = name.strip_suffix(".md").unwrap_or(&name).to_string();
     // The folder path, as Obsidian shows it above the note.
@@ -195,7 +195,7 @@ fn draw_notes(frame: &mut Frame, area: Rect, app: &mut App, theme: &Theme) {
         Some(rel) => {
             let mut parts: Vec<String> = rel
                 .trim_end_matches(".md")
-                .split(std::path::MAIN_SEPARATOR)
+                .split('/')
                 .map(str::to_string)
                 .collect();
             // The note itself as it's shown (its title).
@@ -642,7 +642,7 @@ fn draw_status(buf: &mut Buffer, area: Rect, app: &App, theme: &Theme) {
         let rel = view
             .path
             .as_deref()
-            .map(|p| app.vault.rel(p).unwrap_or(p).to_string_lossy().into_owned())
+            .map(|p| crate::vault::slash(app.vault.rel(p).unwrap_or(p)))
             .unwrap_or_else(|| "untitled".into());
         let dirty = if view.is_dirty() { " [+]" } else { "" };
         let mode = if view.source_mode {

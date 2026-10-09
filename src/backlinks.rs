@@ -484,12 +484,7 @@ mod tests {
         let found = backlinks(&vault, &dune);
         let lines: Vec<_> = found
             .iter()
-            .map(|b| {
-                (
-                    vault.rel(&b.note).unwrap().to_string_lossy().into_owned(),
-                    b.line,
-                )
-            })
+            .map(|b| (crate::vault::slash(vault.rel(&b.note).unwrap()), b.line))
             .collect();
         assert_eq!(
             lines,

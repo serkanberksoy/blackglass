@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=blackglass
+GenericName=Note vault
+Comment=Your notes: linked Markdown, queries, tasks and plugins
+Exec=blackglass --gui %F
+Icon=blackglass
+Terminal=false
+Categories=Office;TextEditor;
+Keywords=notes;markdown;wiki;zettelkasten;vault;
+MimeType=text/markdown;inode/directory;
+StartupWMClass=blackglass

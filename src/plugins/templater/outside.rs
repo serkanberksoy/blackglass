@@ -199,15 +199,7 @@ fn run(
     root: &Path,
     timeout: Duration,
 ) -> Result<String, String> {
-    let mut cmd = if cfg!(windows) {
-        let mut c = Command::new("cmd");
-        c.args(["/C", line]);
-        c
-    } else {
-        let mut c = Command::new("sh");
-        c.args(["-c", line]);
-        c
-    };
+    let mut cmd = mdedit::platform::shell(line);
     cmd.current_dir(root);
     cmd.envs(env.iter().map(|(k, v)| (k, v)));
     let (ok, out, err) = finished(cmd, timeout).map_err(|e| format!("{line}: {e}"))?;

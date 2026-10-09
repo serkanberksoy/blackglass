@@ -9,24 +9,15 @@ use std::path::{Path, PathBuf};
 
 use crate::plugins::settings::{Kind, Setting, Values};
 
-/// `$XDG_CONFIG_HOME` or `~/.config`.
-fn config_home() -> Option<PathBuf> {
-    std::env::var_os("XDG_CONFIG_HOME")
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-}
-
-/// blackglass's config folder: `~/.config/blackglass`.
+/// blackglass's config folder: `~/.config/blackglass` (`$XDG_CONFIG_HOME`
+/// if set; `%APPDATA%\blackglass` on Windows).
 pub fn config_dir() -> Option<PathBuf> {
-    Some(config_home()?.join("blackglass"))
+    Some(mdedit::platform::config_home()?.join("blackglass"))
 }
 
-/// The home folder (`~`).
+/// The home folder (`~`; `%USERPROFILE%` on Windows).
 pub fn home() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/"))
+    mdedit::platform::home().unwrap_or_else(|| PathBuf::from("/"))
 }
 
 /// The recent vaults' file in the config folder.

@@ -27,7 +27,7 @@ fn vault(name: &str, files: &[(&str, &str)]) -> PathBuf {
         fs::write(path, text).unwrap();
     }
     fs::create_dir_all(&dir).unwrap();
-    dir.canonicalize().unwrap()
+    mdedit::platform::canonical(&dir).unwrap()
 }
 
 const NOTES: &[(&str, &str)] = &[
@@ -1465,14 +1465,20 @@ fn the_calendar_asks_before_creating_a_note() {
     key(&mut app, KeyCode::Enter);
     key(&mut app, KeyCode::Enter);
     assert!(path.is_file());
-    assert_eq!(active_path(&app), Some(path.canonicalize().unwrap()));
+    assert_eq!(
+        active_path(&app),
+        Some(mdedit::platform::canonical(&path).unwrap())
+    );
     // A day that has its note opens it without asking.
     ctrl(&mut app, 'w');
     alt(&mut app, KeyCode::Char('c'));
     alt(&mut app, KeyCode::Char('c'));
     key(&mut app, KeyCode::Enter);
     assert!(app.prompt.is_none(), "{:?}", app.prompt);
-    assert_eq!(active_path(&app), Some(path.canonicalize().unwrap()));
+    assert_eq!(
+        active_path(&app),
+        Some(mdedit::platform::canonical(&path).unwrap())
+    );
 }
 
 #[test]
@@ -2374,11 +2380,8 @@ fn another_vault_is_opened_or_created_from_the_palette() {
     assert!(app.tabs.is_empty());
     let rows = screen(&mut app, 100, 24);
     assert!(find(&rows, "Other note").is_some(), "{rows:#?}");
-    let recent = fs::read_to_string(config.join("vaults.toml")).unwrap();
-    assert!(
-        recent.contains(other.to_str().unwrap()),
-        "remembered: {recent}"
-    );
+    let recent = blackglass::config::recent_vaults(&config);
+    assert!(recent.contains(&other), "remembered: {recent:?}");
     // A folder that isn't there yet is made after asking.
     let new = Path::new(env!("CARGO_TARGET_TMPDIR")).join("open-vault-new");
     let _ = fs::remove_dir_all(&new);
@@ -2390,7 +2393,10 @@ fn another_vault_is_opened_or_created_from_the_palette() {
     assert!(find(&rows, "Enter again creates it").is_some(), "{rows:#?}");
     assert!(!new.exists());
     key(&mut app, KeyCode::Enter);
-    assert_eq!(app.vault.root, new.join("Notes").canonicalize().unwrap());
+    assert_eq!(
+        app.vault.root,
+        mdedit::platform::canonical(&new.join("Notes")).unwrap()
+    );
     // Unsaved changes keep the vault.
     fs::write(app.vault.root.join("A.md"), "").unwrap();
     app.rescan();
@@ -2401,7 +2407,10 @@ fn another_vault_is_opened_or_created_from_the_palette() {
     ctrl(&mut app, 'u');
     typing(&mut app, other.to_str().unwrap());
     key(&mut app, KeyCode::Enter);
-    assert_eq!(app.vault.root, new.join("Notes").canonicalize().unwrap());
+    assert_eq!(
+        app.vault.root,
+        mdedit::platform::canonical(&new.join("Notes")).unwrap()
+    );
     assert!(app.message.contains("unsaved"), "{}", app.message);
 }
 
@@ -2981,6 +2990,21 @@ fn outgoing_links_and_unlinked_mentions_join_the_backlinks() {
 }
 
 /// Runs `git` in `dir` (a test's own repositories).
+/// Whether `program` isn't there to run (said, for a test that's then
+/// skipped: Git or curl under Wine, say).
+fn missing(program: &str) -> bool {
+    let there = std::process::Command::new(program)
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok();
+    if !there {
+        eprintln!("skipped: no {program} here");
+    }
+    !there
+}
+
 fn git(dir: &Path, args: &[&str]) -> String {
     let out = std::process::Command::new("git")
         .args(args)
@@ -3046,6 +3070,9 @@ fn wait_status(app: &mut App, text: &str) {
 
 #[test]
 fn git_backs_up_and_syncs_the_vault() {
+    if missing("git") {
+        return;
+    }
     let dir = vault(
         "git-sync",
         &[
@@ -3126,6 +3153,9 @@ fn git_backs_up_and_syncs_the_vault() {
 
 #[test]
 fn git_shows_changes_diffs_and_history() {
+    if missing("git") {
+        return;
+    }
     let dir = vault(
         "git-changes",
         &[
@@ -3202,6 +3232,9 @@ fn git_shows_changes_diffs_and_history() {
 
 #[test]
 fn git_branches_remotes_ignores_and_raw_commands() {
+    if missing("git") {
+        return;
+    }
     let dir = vault(
         "git-chores",
         &[
@@ -3274,6 +3307,9 @@ fn git_branches_remotes_ignores_and_raw_commands() {
 
 #[test]
 fn git_marks_changes_and_authors_in_the_margin() {
+    if missing("git") {
+        return;
+    }
     let dir = vault(
         "git-margin",
         &[
@@ -3457,6 +3493,9 @@ fn a_note_without_properties_gets_them() {
 
 #[test]
 fn git_stages_previews_and_resets_one_change() {
+    if missing("git") {
+        return;
+    }
     let dir = vault(
         "git-hunks",
         &[
@@ -3518,6 +3557,9 @@ fn git_vault(name: &str, files: &[(&str, &str)]) -> PathBuf {
 
 #[test]
 fn git_clones_a_repository_as_the_vault() {
+    if missing("git") {
+        return;
+    }
     let source = git_vault("git-clone-source", &[("Shared.md", "from the source")]);
     let dir = git_vault("git-clone-here", &[("A.md", "")]);
     let target = Path::new(env!("CARGO_TARGET_TMPDIR")).join("git-clone-target");
@@ -3537,7 +3579,7 @@ fn git_clones_a_repository_as_the_vault() {
     }
     assert_eq!(
         app.vault.root,
-        target.canonicalize().unwrap(),
+        mdedit::platform::canonical(&target).unwrap(),
         "{}",
         app.message
     );
@@ -3546,6 +3588,9 @@ fn git_clones_a_repository_as_the_vault() {
 
 #[test]
 fn git_conflicts_are_named_aborted_or_resolved() {
+    if missing("git") {
+        return;
+    }
     let dir = git_vault("git-conflict", &[("Note.md", "base\n")]);
     let base = Path::new(env!("CARGO_TARGET_TMPDIR")).join("git-conflict-remote");
     let _ = fs::remove_dir_all(&base);
@@ -3595,6 +3640,9 @@ fn git_conflicts_are_named_aborted_or_resolved() {
 
 #[test]
 fn git_updates_submodules() {
+    if missing("git") {
+        return;
+    }
     let sub = git_vault("git-sub-source", &[("Inside.md", "in the submodule")]);
     let top = git_vault("git-sub-top", &[("A.md", "")]);
     let allow = ["-c", "protocol.file.allow=always"];
@@ -4531,6 +4579,9 @@ fn last_subject(dir: &Path) -> String {
 
 #[test]
 fn git_commits_staged_amended_with_messages_and_discards() {
+    if missing("git") {
+        return;
+    }
     let dir = git_vault("git-commits", &[("A.md", "a\n"), ("B.md", "b\n")]);
     let mut app = App::new(Vault::open(&dir).unwrap());
     fs::write(dir.join("A.md"), "a2\n").unwrap();
@@ -4625,6 +4676,9 @@ fn git_settings(dir: &Path, text: &str) {
 
 #[test]
 fn git_fetches_resets_merges_theirs_and_runs_on_timers() {
+    if missing("git") {
+        return;
+    }
     let (dir, other) = git_with_remote("git-sync-options");
     let mut app = App::new(Vault::open(&dir).unwrap());
     fs::write(other.join("Note.md"), "theirs\n").unwrap();
@@ -4688,6 +4742,9 @@ fn git_fetches_resets_merges_theirs_and_runs_on_timers() {
 
 #[test]
 fn git_repository_chores_status_and_links() {
+    if missing("git") {
+        return;
+    }
     let (dir, other) = git_with_remote("git-repo-chores");
     let mut app = App::new(Vault::open(&dir).unwrap());
     let opened = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
@@ -4759,6 +4816,9 @@ fn git_repository_chores_status_and_links() {
 
 #[test]
 fn git_runs_in_a_base_path() {
+    if missing("git") {
+        return;
+    }
     let dir = vault(
         "git-base-path",
         &[
@@ -5143,6 +5203,9 @@ fn table_controls_are_a_sidebar_tab() {
 
 #[test]
 fn git_tree_view_squash_and_side_by_side_diffs() {
+    if missing("git") {
+        return;
+    }
     let (dir, other) = git_with_remote("git-tree-squash");
     git_settings(
         &dir,
@@ -5502,7 +5565,13 @@ fn a_dataview_list_from_a_folder_newest_first_and_saves_keep_the_creation_time()
     }
     // Saving a note makes it the newest, and keeps when it was created.
     let p00 = note(&app, "Projects/P00.md");
-    let created = fs::metadata(&p00).unwrap().created().ok();
+    // A creation time of its own (Wine's is the modification time, which
+    // the test set: nothing to keep there).
+    let meta = fs::metadata(&p00).unwrap();
+    let created = meta
+        .created()
+        .ok()
+        .filter(|c| meta.modified().ok() != Some(*c));
     app.open(&p00);
     typing(&mut app, "edited ");
     ctrl(&mut app, 's');
@@ -5812,6 +5881,9 @@ fn templater_app(name: &str, settings: &str, files: &[(&str, &str)]) -> App {
 
 #[test]
 fn a_daily_template_gets_a_quote_from_the_web() {
+    if missing("curl") {
+        return;
+    }
     // The line from a daily template, as Templater writes it.
     let daily = "# <% tp.file.title %>\n\n<% tp.web.daily_quote() %>\n";
     let mut app = templater_app(
@@ -5958,10 +6030,14 @@ fn templates_create_notes_append_at_the_cursor_and_ask_more_kinds_of_questions()
 
 #[test]
 fn user_scripts_and_system_commands_are_tp_user() {
-    let settings = "[scripts]\nscripts_folder = \"Scripts\"\nsystem_commands = true\n\n[user_functions]\ngreet = \"echo hi $who\"\n";
+    // The argument is an environment variable: as the system's shell reads it.
+    let who = if cfg!(windows) { "%who%" } else { "$who" };
+    let settings = format!(
+        "[scripts]\nscripts_folder = \"Scripts\"\nsystem_commands = true\n\n[user_functions]\ngreet = \"echo hi {who}\"\n"
+    );
     let mut app = templater_app(
         "templater-user",
-        settings,
+        &settings,
         &[
             (
                 "Scripts/shout.js",
@@ -8738,6 +8814,8 @@ fn a_task_date_is_saved_as_the_calendar_shows_it() {
     assert_eq!(lines(&app)[0], format!("- [ ] Paint the shed 📅 {shown}"));
 }
 
+// Folder permissions: Unix's (a read-only folder on Windows still takes files).
+#[cfg(unix)]
 #[test]
 fn a_read_only_vault_says_so() {
     use std::os::unix::fs::PermissionsExt;
@@ -9471,4 +9549,67 @@ fn quickadd_templates_groups_and_days() {
     let yesterday = today.pred_opt().unwrap();
     let note = fs::read_to_string(dir.join(format!("{yesterday}.md"))).unwrap();
     assert_eq!(note, format!("## Diary\n- {yesterday}: rain\n"));
+}
+
+#[test]
+fn the_window_has_its_own_settings_page() {
+    let (mut app, config) = app_with_config("window-settings");
+    alt(&mut app, KeyCode::Char(','));
+    let rows = screen(&mut app, 110, 32);
+    assert!(
+        find(&rows, "Window").is_none(),
+        "only in the window: {rows:#?}"
+    );
+    key(&mut app, KeyCode::Esc);
+    app.windowed = true;
+    alt(&mut app, KeyCode::Char(','));
+    typing(&mut app, "font size");
+    let rows = screen(&mut app, 110, 32);
+    assert!(find(&rows, "Font size").is_some(), "{rows:#?}");
+    key(&mut app, KeyCode::Enter); // into the page
+    key(&mut app, KeyCode::Enter); // edit its row
+    ctrl(&mut app, 'u');
+    typing(&mut app, "18");
+    key(&mut app, KeyCode::Enter);
+    let saved = fs::read_to_string(config.join("window.toml")).unwrap();
+    assert!(saved.contains("size = \"18\""), "{saved}");
+    assert_eq!(app.window_settings().size, 18.0);
+}
+
+#[test]
+fn notes_with_windows_line_ends_keep_them() {
+    // `\r\n` notes (written on Windows): read as any other, changed in
+    // place, saved with their own line ends.
+    let mut app = dv_app(
+        "crlf",
+        "",
+        &[
+            ("Q.md", "top\n```dataview\nTASK FROM \"Todo\"\n```"),
+            ("Todo.md", "- [ ] one\r\n- [x] two\r\n"),
+        ],
+    );
+    app.open(&note(&app, "Q.md"));
+    view_mode(&mut app);
+    screen(&mut app, 100, 20);
+    key(&mut app, KeyCode::Tab);
+    key(&mut app, KeyCode::Tab);
+    key(&mut app, KeyCode::Enter);
+    let todo = note(&app, "Todo.md");
+    assert_eq!(
+        fs::read_to_string(&todo).unwrap(),
+        "- [x] one\r\n- [x] two\r\n",
+        "{}",
+        app.message
+    );
+    // Open, a plugin sees its lines without `\r` (Tasks' toggle).
+    app.open(&todo);
+    put_cursor(&mut app, 1, 0);
+    let text = app.with_context(|ctx| ctx.note.unwrap().text.to_string());
+    assert!(!text.contains('\r'), "{text:?}");
+    ctrl(&mut app, 's');
+    assert_eq!(
+        fs::read_to_string(&todo).unwrap(),
+        "- [x] one\r\n- [x] two\r\n",
+        "saved with its own line ends"
+    );
 }

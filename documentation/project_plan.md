@@ -302,9 +302,12 @@ In order:
       (`xattr -d com.apple.quarantine blackglass`), or to download with
       `curl`.
     - The code already handles macOS: `pbcopy` / `pbpaste`, `open`.
-21. **Queued 2026-10-07: Windows support (W-145)** (not started, for
-    later; it compiles for `x86_64-pc-windows-gnu` with no errors or
-    warnings, checked 2026-10-07):
+21. 🟡 **Windows support (W-145)** (queued 2026-10-07; 1.12.0, mdedit
+    3.24.0): done as listed below, the tests run on Windows under Wine
+    (`CARGO_TARGET_X86_64_PC_WINDOWS_GNU_RUNNER=wine cargo test --target
+    x86_64-pc-windows-gnu`), `scripts/release-windows.sh` makes the zip.
+    Left: a run on real Windows, the terminal's side buttons there, a CI
+    runner. The plan was:
     - The config folder: `%APPDATA%\blackglass` on Windows (now only
       `$XDG_CONFIG_HOME` / `$HOME`, which Windows usually lacks, so
       settings, keys, the theme and recent vaults aren't kept).
@@ -326,7 +329,14 @@ In order:
       today's daily note or a note by path, a heading made if missing),
       each a command; for quick budget and habit lines
       (`requirements/quickadd_requirements.md`).
-23. **Backlog 2026-10-07: mdedit on crates.io** (not started, for later):
+23. 🟡 **A window of its own, W-147** (requested 2026-10-09; 1.11.0): the
+    same app in an eframe (egui) window on every OS, `--gui` /
+    `--terminal`; a font setting with real faces, images as pictures,
+    color emoji, the window's clipboard, an icon, a Linux launcher, a
+    macOS app script, a window build in the Linux release; on Windows
+    `blackglass-window.exe` (1.12.0). Next: a signed macOS app in the
+    releases, Linux packages, a Windows installer.
+24. **Backlog 2026-10-07: mdedit on crates.io** (not started, for later):
     publish mdedit as a library on crates.io so blackglass builds without
     a `../mdedit` checkout beside it (simpler source builds, a simpler
     Homebrew formula, a step towards homebrew-core) and others can embed

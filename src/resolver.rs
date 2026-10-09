@@ -42,6 +42,21 @@ impl VaultResolver {
     }
 }
 
+impl VaultResolver {
+    /// `path` as the vault spells it: a file system that ignores case
+    /// (Windows, macOS) finds `crane.md` for the note `Crane.md`.
+    fn spelled(&self, path: PathBuf) -> PathBuf {
+        let Ok(rel) = path.strip_prefix(&self.root) else {
+            return path;
+        };
+        let wanted = key(&rel.to_string_lossy());
+        self.files
+            .iter()
+            .find(|(file, _)| *file == wanted)
+            .map_or(path.clone(), |(_, real)| self.root.join(real))
+    }
+}
+
 /// How paths are compared: lowercase, `/` separators.
 fn key(path: &str) -> String {
     path.replace('\\', "/").to_lowercase()
@@ -57,7 +72,7 @@ impl Resolver for VaultResolver {
             .filter(|d| !d.as_os_str().is_empty());
         for dir in base.into_iter().chain([self.root.as_path()]) {
             if let Ok(path) = mdedit::links::resolve(dir, target) {
-                return Ok(path);
+                return Ok(self.spelled(path));
             }
         }
         let wanted = key(target.trim_start_matches("./"));
@@ -110,6 +125,20 @@ impl Resolver for VaultResolver {
 mod tests {
     use super::*;
     use crate::vault::tests::{scratch, write};
+
+    #[test]
+    fn a_link_resolves_to_the_notes_own_spelling() {
+        // On a file system that ignores case (Windows, macOS) `crane.md`
+        // is found too: the note is still `Crane.md`.
+        let (dir, r) = setup("resolver-case");
+        let root = mdedit::platform::canonical(&dir).unwrap();
+        assert_eq!(r.resolve(None, "dune").unwrap(), root.join("Books/Dune.md"));
+        assert_eq!(r.resolve(None, "home").unwrap(), root.join("Home.md"));
+        assert_eq!(
+            r.resolve(None, "journal/2026-08-09").unwrap(),
+            root.join("Journal/2026-08-09.md")
+        );
+    }
 
     fn setup(name: &str) -> (PathBuf, VaultResolver) {
         let dir = scratch(name);
