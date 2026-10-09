@@ -3,7 +3,7 @@
 #
 #   brew install serkanberksoy/tap/blackglass
 class Blackglass < Formula
-  desc "Note-taking workspace for the terminal: linked Markdown notes, queries, tasks"
+  desc "Note-taking workspace for the terminal or a window: linked Markdown, queries, tasks"
   homepage "https://github.com/serkanberksoy/blackglass"
   url "https://github.com/serkanberksoy/blackglass/archive/refs/tags/v@VERSION@.tar.gz"
   sha256 "@SHA256@"
@@ -30,6 +30,8 @@ class Blackglass < Formula
     <<~EOS
       Try the example vault, a tour of every feature:
         blackglass --example
+      Open it in a window of its own (your fonts, pictures, color emoji):
+        blackglass --gui --example
     EOS
   end
 
