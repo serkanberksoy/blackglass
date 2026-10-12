@@ -12,15 +12,38 @@ use crate::ui;
 use crate::vault::Vault;
 use crate::workspace::App;
 
-/// What to open first: `path`, or on the very first run without one the
-/// example vault (written out); with a reason when that failed.
-pub fn first(path: Option<PathBuf>) -> (Option<PathBuf>, Option<String>) {
-    if path.is_some() || !config::first_run(config::config_dir().as_deref()) {
+/// What to open first: `path`; on the first run (no config yet) the
+/// example vault (written out); the last vault when the user's setting
+/// says so; else nothing (the vault picker asks). With a reason when the
+/// example vault couldn't be written.
+pub fn start(path: Option<PathBuf>) -> (Option<PathBuf>, Option<String>) {
+    start_in(
+        path,
+        config::config_dir().as_deref(),
+        &crate::example::default_folder(),
+    )
+}
+
+/// [`start`] with the config folder `dir` and the example vault's folder.
+fn start_in(
+    path: Option<PathBuf>,
+    dir: Option<&Path>,
+    example: &Path,
+) -> (Option<PathBuf>, Option<String>) {
+    if path.is_some() {
         return (path, None);
     }
-    match crate::example::install(&crate::example::default_folder()) {
-        Ok(welcome) => (Some(welcome), None),
-        Err(e) => (None, Some(format!("The example vault: {e}"))),
+    match dir {
+        Some(dir) if !config::first_run(Some(dir)) => {
+            let last = config::open_last(dir)
+                .then(|| config::last_vault(dir))
+                .flatten();
+            (last, None)
+        }
+        _ => match crate::example::install(example) {
+            Ok(welcome) => (Some(welcome), None),
+            Err(e) => (None, Some(format!("The example vault: {e}"))),
+        },
     }
 }
 
@@ -84,4 +107,45 @@ pub fn picker(problem: Option<String>) -> (crate::vault_picker::VaultPicker, ui:
         .map(|(palette, _)| palette)
         .unwrap_or_default();
     (picker, palette)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vault::tests::scratch;
+
+    #[test]
+    fn the_first_run_opens_the_example_vault() {
+        let root = scratch("start-first");
+        let example = root.join("example");
+        let config = root.join("config");
+        let (path, problem) = start_in(None, Some(&config), &example);
+        assert_eq!(path, Some(example.join("Welcome.md")), "{problem:?}");
+        // No config folder at all: the example vault too.
+        let (path, _) = start_in(None, None, &example);
+        assert_eq!(path, Some(example.join("Welcome.md")));
+        // A path given is opened, first run or not.
+        let given = root.join("given");
+        assert_eq!(
+            start_in(Some(given.clone()), Some(&config), &example).0,
+            Some(given)
+        );
+    }
+
+    #[test]
+    fn the_last_vault_opens_without_asking_when_the_setting_says_so() {
+        let root = scratch("start-last");
+        let example = root.join("example");
+        let config = root.join("config");
+        let mine = root.join("mine");
+        config::remember_vault(&config, &mine).unwrap();
+        assert_eq!(
+            start_in(None, Some(&config), &example),
+            (None, None),
+            "off: the vault picker asks"
+        );
+        config::set_open_last(&config, true).unwrap();
+        assert_eq!(start_in(None, Some(&config), &example), (Some(mine), None));
+        assert!(!example.exists(), "not the example vault");
+    }
 }

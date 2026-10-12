@@ -28,7 +28,7 @@ tenth of a second.
 
 <p align="center"><em>Go to a note by typing part of its name, add a task with an estimate and a date in words, and watch the query results add it up.</em></p>
 
-**Version:** 1.12.0 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
+**Version:** 1.16.0 · [Version history](VERSION.md) · [Every feature](documentation/features.md)
 
 ## Contents
 
@@ -66,7 +66,7 @@ tenth of a second.
 
 ## Features
 
-126 of 147 tracked features are done; [the full list](documentation/features.md)
+130 of 150 tracked features are done; [the full list](documentation/features.md)
 says what each one does.
 
 ### Linked notes with live preview
@@ -97,6 +97,11 @@ says what each one does.
   flattening and functions; inline queries like `` `= sum(this.file.tasks.estimate)` ``.
 - **DataviewJS and Templater** run JavaScript in a sandbox (no files, no
   network) for charts, stats and templates that ask questions.
+- **Tracker:** charts of what your daily notes track (a tag's values,
+  a property, an inline field, tasks): a summary with averages and
+  streaks, line and bar charts, a month view, a pie or a bullet chart.
+- **Orphaned files:** a report of the files nothing links to, broken
+  links, empty files and empty folders.
 - Results update as you type; click a result to open it or check a task
   off.
 - **Worked examples,** built from notes and Dataview queries alone
@@ -267,7 +272,8 @@ where. Optional programs it uses when they're there:
 ```bash
 blackglass --example            # try the example vault: a tour of every feature
 blackglass ~/Notes              # open your own folder of notes
-blackglass                      # choose a vault (the very first time: the example vault)
+blackglass                      # choose a vault (the very first time: the example vault;
+                                #  Settings → Vaults: always open the last one)
 blackglass ~/Notes/today.md     # open a note in its vault
 blackglass --help               # all options and keys
 ```

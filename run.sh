@@ -6,6 +6,9 @@
 #   ./run.sh --no-mouse              # options are passed on
 #
 # Builds first (cargo only rebuilds what changed), so it's always current.
+# Uses a config folder of its own (target/run-config; BLACKGLASS_RUN_CONFIG
+# to choose another), so trying things never changes your settings or the
+# vault blackglass opens last.
 set -euo pipefail
 cd "$(dirname "$0")"
 command -v cargo >/dev/null || export PATH="$HOME/.cargo/bin:$PATH"
@@ -27,4 +30,5 @@ if [[ ! -e "$target" ]]; then
     exit 1
 fi
 
+export XDG_CONFIG_HOME="${BLACKGLASS_RUN_CONFIG:-$PWD/target/run-config}"
 exec target/debug/blackglass "${args[@]}" "$target"

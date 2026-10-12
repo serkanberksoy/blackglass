@@ -110,6 +110,8 @@ pub enum Target {
     Dates,
     /// The window's (`window.toml`, in the user's config folder).
     Window,
+    /// Starting up (`vaults.toml`, in the user's config folder).
+    Vaults,
     /// A plugin's, by its index in the plugins list.
     Plugin(usize),
 }
@@ -631,7 +633,7 @@ impl App {
         };
         app.plugin_keys();
         app.template_tags();
-        app.plugins.borrow_mut().queries.set_vault(&app.vault);
+        app.plugins.borrow_mut().set_vault(&app.vault);
         app.restore_session();
         if !writable(&app.vault.root) {
             app.message =
@@ -720,7 +722,7 @@ impl App {
     /// The vault changed: the plugins and query blocks see it as it is.
     fn vault_changed(&mut self) {
         let mut plugins = self.plugins.borrow_mut();
-        plugins.queries.set_vault(&self.vault);
+        plugins.set_vault(&self.vault);
         plugins.vault_changed(&self.vault);
     }
 
@@ -906,7 +908,7 @@ impl App {
             self.backlinks_cache = None;
             self.sidebar.update_search(&self.vault);
             let mut plugins = self.plugins.borrow_mut();
-            plugins.queries.set_vault(&self.vault);
+            plugins.set_vault(&self.vault);
             // Only this note: the plugins update it alone.
             plugins.note_changed(path, &self.vault);
             plugins.note_saved(path, &self.vault);
@@ -952,7 +954,7 @@ impl App {
             self.backlinks_cache = None;
             self.sidebar.update_search(&self.vault);
             let mut plugins = self.plugins.borrow_mut();
-            plugins.queries.set_vault(&self.vault);
+            plugins.set_vault(&self.vault);
             plugins.note_changed(path, &self.vault);
         }
     }
@@ -2040,7 +2042,7 @@ impl App {
         self.dates = crate::nldates::Settings::load(&vault);
         self.vault = Rc::new(vault);
         self.plugins = Rc::new(RefCell::new(Plugins::for_vault(&self.vault)));
-        self.plugins.borrow_mut().queries.set_vault(&self.vault);
+        self.plugins.borrow_mut().set_vault(&self.vault);
         self.shared.processor = Some(Box::new(Blocks(Rc::clone(&self.plugins))));
         self.shared.resolver = Box::new(VaultResolver::new(&self.vault));
         self.sidebar = Sidebar::new();
@@ -3330,6 +3332,15 @@ impl App {
                 crate::window_settings::Settings::schema(),
                 crate::window_settings::Settings::values(self.config_dir.as_deref()),
             ),
+            Target::Vaults => {
+                let on = self
+                    .config_dir
+                    .as_deref()
+                    .is_some_and(crate::config::open_last);
+                let mut values = Values::default();
+                values.set("", "open_last", if on { "on" } else { "off" });
+                ("Vaults".into(), crate::config::vaults_settings(), values)
+            }
             Target::Plugin(i) => {
                 let plugins = self.plugins.borrow();
                 let name = plugins.manifest(i).map_or("", |m| m.name);
@@ -3374,6 +3385,13 @@ impl App {
                     .map_err(|e| format!("Cannot save {FILE}: {e}"))?;
                 self.window = Settings::load(Some(&dir));
                 Ok(())
+            }
+            Target::Vaults => {
+                let Some(dir) = self.config_dir.clone() else {
+                    return Err("No config folder to save the vaults' settings in".into());
+                };
+                crate::config::set_open_last(&dir, value == "on")
+                    .map_err(|e| format!("Cannot save {}: {e}", crate::config::VAULTS_FILE))
             }
             Target::Dates => {
                 let mut values = crate::nldates::Settings::values(&self.vault);
@@ -4453,9 +4471,11 @@ impl App {
             return;
         };
         self.moving = Some(path.clone());
-        let question = Question::Choose {
+        // A folder of the vault, or a new one typed (made when moved).
+        let question = Question::Suggest {
             prompt: format!("Move {} to", file_name(&path)),
             items: self.move_targets(&path),
+            default: String::new(),
         };
         self.prompt = Some(Prompt::Ask(Ask::new(HOST, "move-note", vec![question])));
     }
@@ -4579,10 +4599,18 @@ impl App {
         };
         let result = match (command, answers) {
             ("delete-note", [Answer::Choice(0)]) => self.delete_note(&path),
-            ("move-note", [Answer::Choice(i)]) => match self.move_targets(&path).get(*i) {
-                Some(folder) => self.move_note(&path, &folder.clone()),
-                None => Ok(()),
-            },
+            // A folder of the vault (as typed, any case), else a new one.
+            ("move-note", [Answer::Text(typed)]) => {
+                let existing = self.move_targets(&path).into_iter().find(|f| {
+                    f.trim_end_matches('/')
+                        .eq_ignore_ascii_case(typed.trim().trim_end_matches('/'))
+                });
+                match existing.or_else(|| new_folder(typed).filter(|f| !f.is_empty())) {
+                    Some(folder) => self.move_note(&path, &folder),
+                    None if new_folder(typed).is_some() => Ok(()),
+                    None => Err(format!("{typed}: a folder inside the vault, please")),
+                }
+            }
             _ => Ok(()),
         };
         if let Err(e) = result {
@@ -4635,6 +4663,15 @@ impl App {
     /// moves; tabs and history follow.
     fn move_note(&mut self, path: &Path, folder: &str) -> Result<(), String> {
         let name = file_name(path);
+        if path.is_dir()
+            && self
+                .vault
+                .root
+                .join(folder.trim_matches('/'))
+                .starts_with(path)
+        {
+            return Err(format!("Cannot move {name} into itself"));
+        }
         let dir = self.vault.root.join(folder.trim_matches('/'));
         let new = dir.join(&name);
         if new.exists() {
@@ -5417,6 +5454,26 @@ pub(crate) fn usable_shortcut(chord: &Chord) -> bool {
 }
 
 /// A path's file name, for messages.
+/// A folder typed for "Move" (`Archive/2026`), as [`App::move_targets`]
+/// shows one (`Archive/2026/`; empty for nothing typed); `None` if it
+/// would leave the vault.
+fn new_folder(typed: &str) -> Option<String> {
+    let parts: Vec<&str> = typed
+        .trim()
+        .split(['/', '\\'])
+        .map(str::trim)
+        .filter(|p| !p.is_empty() && *p != ".")
+        .collect();
+    if parts.iter().any(|p| *p == ".." || p.contains(':')) {
+        return None;
+    }
+    Some(if parts.is_empty() {
+        String::new()
+    } else {
+        format!("{}/", parts.join("/"))
+    })
+}
+
 fn file_name(path: &Path) -> String {
     path.file_name()
         .unwrap_or_default()

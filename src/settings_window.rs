@@ -23,6 +23,8 @@ pub enum Page {
     Dates,
     /// The window's (`--gui`): its font and text size.
     Window,
+    /// Starting up: the last vault, or the vault picker.
+    Vaults,
     /// Every command's keys.
     Shortcuts,
     /// The plugins: install, uninstall, enable, disable.
@@ -162,6 +164,11 @@ impl App {
                 page: Page::Dates,
                 title: "Dates".into(),
             },
+            NavItem {
+                group: OPTIONS,
+                page: Page::Vaults,
+                title: "Vaults".into(),
+            },
         ];
         if self.windowed {
             all.push(NavItem {
@@ -192,6 +199,7 @@ impl App {
             Page::Notes => "Notes".into(),
             Page::Dates => "Dates".into(),
             Page::Window => "Window".into(),
+            Page::Vaults => "Vaults".into(),
             Page::Shortcuts => "Keyboard shortcuts".into(),
             Page::Plugins => "Plugins".into(),
             Page::Plugin(i) => self
@@ -222,6 +230,7 @@ impl App {
             Page::Notes => settings(Target::Notes),
             Page::Dates => settings(Target::Dates),
             Page::Window => settings(Target::Window),
+            Page::Vaults => settings(Target::Vaults),
             Page::Plugin(i) => settings(Target::Plugin(i)),
             Page::Shortcuts => self
                 .all_commands()
@@ -436,6 +445,7 @@ impl App {
             Page::Notes => Target::Notes,
             Page::Dates => Target::Dates,
             Page::Window => Target::Window,
+            Page::Vaults => Target::Vaults,
             _ => Target::Editor,
         };
         if let Err(e) = self.set_setting(target, setting, value) {

@@ -1,3 +1,3 @@
 # blackglass plugins for this vault
-installed = ["dataview", "templater", "periodic-notes", "recent-files", "mermaid", "tables", "tasks", "bases", "bookmarks", "zettelkasten", "citations", "archiver", "emoji-shortcodes", "encrypt", "quickadd"]
-enabled = ["dataview", "templater", "periodic-notes", "recent-files", "mermaid", "tables", "tasks", "bases", "bookmarks", "zettelkasten", "citations", "archiver", "emoji-shortcodes", "encrypt", "quickadd"]
+installed = ["dataview", "templater", "periodic-notes", "recent-files", "mermaid", "tables", "tasks", "bases", "bookmarks", "zettelkasten", "citations", "archiver", "emoji-shortcodes", "encrypt", "quickadd", "tracker", "orphaned-files"]
+enabled = ["dataview", "templater", "periodic-notes", "recent-files", "mermaid", "tables", "tasks", "bases", "bookmarks", "zettelkasten", "citations", "archiver", "emoji-shortcodes", "encrypt", "quickadd", "tracker", "orphaned-files"]

@@ -2056,6 +2056,26 @@ fn a_note_can_be_moved_to_a_folder_and_deleted_to_the_trash() {
 }
 
 #[test]
+fn a_note_can_be_moved_to_a_folder_that_isnt_there_yet() {
+    let mut app = app("move-new-folder");
+    let home = note(&app, "Welcome.md");
+    app.open(&home);
+    run_palette(&mut app, "move note");
+    typing(&mut app, "Archive/2026");
+    key(&mut app, KeyCode::Enter);
+    let moved = note(&app, "Archive/2026/Welcome.md");
+    assert!(moved.is_file() && !home.exists(), "{}", app.message);
+    assert_eq!(active_path(&app), Some(moved.clone()), "the tab follows");
+    assert!(app.message.contains("Archive/2026/"), "{}", app.message);
+    // Not outside the vault.
+    run_palette(&mut app, "move note");
+    typing(&mut app, "../out");
+    key(&mut app, KeyCode::Enter);
+    assert!(moved.is_file(), "stays: {}", app.message);
+    assert!(app.message.contains("inside the vault"), "{}", app.message);
+}
+
+#[test]
 fn an_editor_command_on_another_key_still_works() {
     let (mut app, _) = app_with_config("editor-key");
     app.keymap.apply("save = \"Alt+S\"\n");
@@ -2882,6 +2902,206 @@ fn mermaid_diagrams_are_drawn_by_their_plugin() {
         find(&rows, "flowchart TD").is_none(),
         "drawn, not the source: {rows:#?}"
     );
+}
+
+/// Daily notes with an exercise tag's minutes, a weight field and a
+/// mood property, for Tracker.
+const TRACKED: &[(&str, &str)] = &[
+    (
+        "Daily/2026-10-01.md",
+        "---\nmood: 7\n---\n#exercise:30 weight:: 70.5\n- [x] run\n",
+    ),
+    (
+        "Daily/2026-10-02.md",
+        "---\nmood: 5\n---\n#exercise:20 weight:: 70.1\n- [ ] run\n",
+    ),
+    ("Daily/2026-10-03.md", "---\nmood: 6\n---\nweight:: 69.8\n"),
+    (
+        "Daily/2026-10-04.md",
+        "---\nmood: 8\n---\n#exercise:45 weight:: 69.6\n- [x] run\n",
+    ),
+    (
+        "Daily/2026-10-05.md",
+        "---\nmood: 9\n---\n#exercise:15 #exercise:10\n",
+    ),
+    ("Daily/notes about running.md", "#exercise:999 has no date"),
+    (
+        ".blackglass/plugins.toml",
+        "installed = [\"tracker\"]\nenabled = [\"tracker\"]\n",
+    ),
+];
+
+#[test]
+fn tracker_summarizes_and_charts_what_daily_notes_track() {
+    let mut files = TRACKED.to_vec();
+    files.push((
+        "Track.md",
+        "```tracker\nsearchType: tag\nsearchTarget: exercise\nfolder: Daily\nsummary:\n    template: \"Total {{sum()}} min, best streak {{maxStreak()}} days, mean {{average()::%.1f}}\"\n```\n\
+         ```tracker\nsearchType: dvField\nsearchTarget: weight\nfolder: Daily\nline:\n    title: Weight\n    yAxisLabel: kg\n```\n\
+         ```tracker\nsearchType: frontmatter\nsearchTarget: mood\nfolder: Daily\nbar:\n    title: Mood\n```\n\
+         ```tracker\nsearchType: task.done\nsearchTarget: run\nfolder: Daily\nmonth:\n    mode: circle\n```\n\
+         ```tracker\nsearchType: tag\nsearchTarget: exercise\nfolder: Daily\npie:\n    title: Split\n    data: '{{sum()}}, 100'\n    dataName: Done, Goal\n    showLegend: true\n```\n\
+         ```tracker\nsearchType: tag\nsearchTarget: exercise\nfolder: Daily\nbullet:\n    title: Minutes\n    value: '{{sum()}}'\n    range: 50, 100, 150\n    markerValue: 120\n```\n\
+         ```tracker\nsearchType: tag\nsearchTarget: nothing\nsummary:\n    template: x\n```\n",
+    ));
+    let dir = vault("tracker", &files);
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    app.open(&note(&app, "Track.md"));
+    view_mode(&mut app);
+    let rows = screen(&mut app, 120, 120);
+    // A summary: the tag's values summed over the dated notes (two on
+    // the 5th), the longest run of days with data, the mean as asked.
+    assert!(
+        find(&rows, "Total 120 min, best streak 2 days, mean 30.0").is_some(),
+        "{rows:#?}"
+    );
+    // A line chart: its title, its axis' label and values, its dates.
+    assert!(find(&rows, "Weight").is_some(), "{rows:#?}");
+    assert!(
+        find(&rows, "70.5").is_some(),
+        "the top of the axis: {rows:#?}"
+    );
+    assert!(find(&rows, "2026-10-01").is_some(), "{rows:#?}");
+    assert!(find(&rows, "2026-10-05").is_some(), "{rows:#?}");
+    assert!(
+        rows.iter()
+            .any(|r| r.chars().any(|c| ('\u{2801}'..='\u{28ff}').contains(&c))),
+        "drawn in braille: {rows:#?}"
+    );
+    // A bar chart: bars of blocks.
+    assert!(find(&rows, "Mood").is_some(), "{rows:#?}");
+    assert!(find(&rows, "█").is_some(), "{rows:#?}");
+    // The month: its name, the week, the days done circled.
+    assert!(find(&rows, "October 2026").is_some(), "{rows:#?}");
+    assert!(
+        find(&rows, "Su  Mo  Tu  We  Th  Fr  Sa").is_some(),
+        "{rows:#?}"
+    );
+    // A pie's legend with shares; a bullet chart's value and marker.
+    assert!(find(&rows, "Done  120  55%").is_some(), "{rows:#?}");
+    assert!(find(&rows, "Minutes").is_some(), "{rows:#?}");
+    assert!(find(&rows, "120 / 150").is_some(), "{rows:#?}");
+    // A target nothing has says so, as the original does.
+    assert!(find(&rows, "No valid data found").is_some(), "{rows:#?}");
+    assert!(
+        find(&rows, "searchType").is_none(),
+        "drawn, not the source: {rows:#?}"
+    );
+    // A click on the line chart says the day's value.
+    let (y, x) = find(&rows, "70.5┤").unwrap();
+    click(&mut app, (x + 6) as u16, y as u16);
+    assert_eq!(app.message, "2026-10-01: untitled 70.5");
+    // The month: the one before, back; a day selected, then opened.
+    let (y, x) = find(&rows, "‹      October 2026").unwrap();
+    click(&mut app, x as u16, y as u16);
+    let rows = screen(&mut app, 120, 120);
+    assert!(find(&rows, "September 2026").is_some(), "{rows:#?}");
+    let (y, x) = find(&rows, "September 2026").unwrap();
+    click(&mut app, (x + 3) as u16, y as u16);
+    let rows = screen(&mut app, 120, 120);
+    let (y, x) = find(&rows, "  1   2   3").unwrap();
+    click(&mut app, (x + 6) as u16, y as u16);
+    let rows = screen(&mut app, 120, 120);
+    assert!(
+        find(&rows, "2026-10-02: untitled – (click again to open)").is_some(),
+        "selected (no run done that day): {rows:#?}"
+    );
+    let (y, x) = find(&rows, " 1 [ 2]  3").unwrap();
+    click(&mut app, (x + 5) as u16, y as u16);
+    assert_eq!(
+        active_path(&app),
+        Some(note(&app, "Daily/2026-10-02.md")),
+        "{}",
+        app.message
+    );
+    // A note saved: the blocks follow.
+    press(&mut app, KeyCode::End, KeyModifiers::CONTROL);
+    typing(&mut app, " #exercise:5");
+    ctrl(&mut app, 's');
+    app.open(&note(&app, "Track.md"));
+    let rows = screen(&mut app, 120, 120);
+    assert!(
+        find(&rows, "Total 125 min, best streak 2 days").is_some(),
+        "{rows:#?}"
+    );
+}
+
+#[test]
+fn a_report_of_orphaned_files_broken_links_and_empty_ones() {
+    let files = [
+        (
+            "Home.md",
+            "[[Linked]] ![[pic.png]] [[Missing note]] [x](Gone.md)\n",
+        ),
+        ("Linked.md", "Back to [[Home]]\n```\n[[In code]]\n```\n"),
+        ("Lonely.md", "Nobody links here. [[Also missing]]"),
+        ("Blank.md", "---\ntags: [x]\n---\n\n  \n"),
+        ("pic.png", "png"),
+        ("unused.pdf", "pdf"),
+        ("Archive/Old.md", "old"),
+        ("Empty/Deeper/.hidden", ""),
+        (
+            ".blackglass/plugins.toml",
+            "installed = [\"orphaned-files\"]\nenabled = [\"orphaned-files\"]\n",
+        ),
+        (
+            ".blackglass/plugins/orphaned-files/settings.toml",
+            "ignore_folders = \"Archive\"\nignore_types = \"pdf\"\n",
+        ),
+    ];
+    let dir = vault("orphans", &files);
+    fs::create_dir_all(dir.join("Nothing here")).unwrap();
+    let mut app = App::new(Vault::open(&dir).unwrap());
+    run_palette(&mut app, "find orphaned files and broken links");
+    let report = dir.join("Orphaned files and broken links.md");
+    let text = fs::read_to_string(&report).unwrap_or_else(|_| panic!("{}", app.message));
+    assert_eq!(active_path(&app), Some(report.clone()), "opened");
+    let section = |title: &str| -> Vec<String> {
+        text.split("\n## ")
+            .find(|s| s.starts_with(title))
+            .unwrap_or_else(|| panic!("{title}: {text}"))
+            .lines()
+            .filter(|l| l.starts_with("- "))
+            .map(String::from)
+            .collect()
+    };
+    // Home is linked from Linked; Archive and PDFs are ignored.
+    assert_eq!(
+        section("Orphaned files (2)"),
+        ["- [[Blank]]", "- [[Lonely]]"],
+        "{text}"
+    );
+    assert_eq!(
+        section("Broken links (3)"),
+        [
+            "- [[Gone.md]] in [[Home]]",
+            "- [[Missing note]] in [[Home]]",
+            "- [[Also missing]] in [[Lonely]]",
+        ],
+        "not in code, not from the report itself: {text}"
+    );
+    assert_eq!(
+        section("Empty files (1)"),
+        ["- [[Blank]]"],
+        "frontmatter alone: {text}"
+    );
+    assert_eq!(
+        section("Empty folders (2)"),
+        ["- `Empty/`", "- `Nothing here/`"],
+        "hidden files don't count: {text}"
+    );
+    // Again: the report is brought up to date, not refused.
+    fs::remove_file(dir.join("Lonely.md")).unwrap();
+    app.tick();
+    app.rescan();
+    run_palette(&mut app, "find orphaned files and broken links");
+    let text = fs::read_to_string(&report).unwrap();
+    assert!(
+        text.contains("## Orphaned files (1)"),
+        "{text}\n{}",
+        app.message
+    );
+    assert!(!text.contains("Lonely"), "{text}");
 }
 
 #[test]
@@ -9574,6 +9794,32 @@ fn the_window_has_its_own_settings_page() {
     let saved = fs::read_to_string(config.join("window.toml")).unwrap();
     assert!(saved.contains("size = \"18\""), "{saved}");
     assert_eq!(app.window_settings().size, 18.0);
+}
+
+#[test]
+fn the_last_vault_can_open_without_asking() {
+    let (mut app, config) = app_with_config("open-last-vault");
+    alt(&mut app, KeyCode::Char(','));
+    typing(&mut app, "last vault");
+    let rows = screen(&mut app, 110, 32);
+    assert!(
+        find(&rows, "Always open the last vault").is_some(),
+        "{rows:#?}"
+    );
+    assert!(!blackglass::config::open_last(&config));
+    key(&mut app, KeyCode::Enter); // into the page
+    key(&mut app, KeyCode::Enter); // off → on
+    assert!(blackglass::config::open_last(&config), "{}", app.message);
+    // Another vault opened: it's the last one now, the setting kept.
+    key(&mut app, KeyCode::Esc);
+    key(&mut app, KeyCode::Esc);
+    let other = vault("open-last-vault-other", &[("Other.md", "hi")]);
+    run_palette(&mut app, "open vault");
+    ctrl(&mut app, 'u');
+    typing(&mut app, other.to_str().unwrap());
+    key(&mut app, KeyCode::Enter);
+    assert_eq!(blackglass::config::last_vault(&config), Some(other));
+    assert!(blackglass::config::open_last(&config));
 }
 
 #[test]

@@ -77,7 +77,7 @@ type Clipboard = std::rc::Rc<std::cell::RefCell<Option<String>>>;
 /// Opens `path` (a vault or a note; `None`: the vault picker first) in a
 /// window, and runs until it's closed.
 pub fn run(path: Option<PathBuf>) -> io::Result<()> {
-    let (path, problem) = startup::first(path);
+    let (path, problem) = startup::start(path);
     let copied = Clipboard::default();
     let screen = open(path, problem, &copied, true);
     let options = eframe::NativeOptions {

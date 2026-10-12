@@ -51,6 +51,8 @@ or off; all but Git and Recent Files are on in this vault.
 | Emoji Shortcodes | [[Emoji Shortcodes]] |
 | Encrypt | [[Encrypt]] |
 | QuickAdd | [[QuickAdd]] |
+| Tracker | [[Tracker]] |
+| Orphaned files | [[Orphaned files]] |
 | Git | [[Git]] |
 
 ## Worked examples

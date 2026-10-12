@@ -1,6 +1,6 @@
 # Version history
 
-Current version: **1.12.0**
+Current version: **1.16.0**
 
 ## Versioning rules
 
@@ -28,6 +28,92 @@ Entry format: `## X.Y.Z (YYYY-MM-DD)`, followed by *Added / Changed / Fixed*
 sections that name feature IDs.
 
 ---
+
+## 1.16.0 (2026-10-13)
+
+### Added
+- **Orphaned files (W-150), a new plugin:** "Find orphaned files and
+  broken links" writes a report to the top of the vault
+  (`Orphaned files and broken links.md`) and opens it:
+  - **orphaned files:** notes, images and other files no note links to;
+  - **broken links:** links to files that don't exist, with the note
+    each is in (a click on one makes the note);
+  - **empty files:** nothing in them, or nothing but properties;
+  - **empty folders:** no files in them.
+  - Run again, it brings the report up to date (one undo step). Each
+    search has a command of its own too. Folders, tags and file types
+    can be left out, files linking to a hub note aren't orphans, and
+    orphans can be sorted by size (Settings → Orphaned files).
+
+## 1.15.0 (2026-10-13)
+
+### Added
+- **Tracker (W-149), the rest of the original:**
+  - The month view moves between months (`‹` / `›`, the title goes
+    back) and datasets (a click on the dataset's name); a click on a day
+    selects it and shows its value, a second click opens its note. Days
+    can be colored by their value or their streak's length
+    (`circleColorByValue`, `circleColorByStreak`), and every dataset's
+    annotations shown at once.
+  - A click on a line or bar chart says that day's values in the status
+    bar (`allowInspectData`, the original's hover).
+  - Legends on any side, in a row or a column, on a background, in a
+    box; tick intervals and formats on both axes (`xAxisTickInterval:
+    1w`, `yAxisTickLabelFormat: '%.1f'`); axis colors; `margin`.
+  - A pie's `label` and `extLabel` in its legend; a standing bullet chart
+    (`orientation: vertical`); a summary's `style` (color, bold, italic).
+  - Notes linked from a file (`fileContainsLinkedFiles`, with a
+    multiplier after each link), nested properties (`body.weight`), and
+    times and durations as values (`23:15`, `7h30m`, in hours); the old
+    `{{sum}}` and `{{sum(1)}}`.
+
+## 1.14.0 (2026-10-13)
+
+### Added
+- **Tracker (W-149), a new plugin:** ```` ```tracker ```` blocks show what
+  daily notes track, with the original's parameters, so its blocks work
+  as written (`requirements/tracker_requirements.md`).
+  - It reads tags with values (`#run:5`), properties, inline fields
+    (`sleep:: 7`), tasks, text by regular expression, wiki links, tables
+    and file data, a value a day by the date in each note's name
+    (`dateFormat`, with text around it), or by another target
+    (`xDataset`), from `startDate` to `endDate` (`-7d`, `-1M` …).
+  - Values can be words (`textValueMap`), summed over time (`accum`),
+    shifted, or given a penalty on days without them.
+  - It shows a **summary** (`{{average()::%.1f}}`, `{{maxStreak()}}`,
+    dates, `+ - * / %`), a **line chart** in braille, a **bar chart**
+    (stacked too), a **month view** (days circled, streaks joined, a
+    click opens the day's note), a **pie** with its legend and a
+    **bullet chart**.
+  - The example vault's `Plugins/Tracker` charts the journal's sleep and
+    mood.
+- Plugins can read notes while drawing (`Plugin::set_vault`).
+
+## 1.13.1 (2026-10-10)
+
+### Fixed
+- **Move note to a folder (W-65):** a folder that isn't there yet
+  (`Archive/2026`) did nothing; now it's made and the note moved into it.
+  A folder's name can be typed in any case (`books` is `Books/`), and a
+  path out of the vault is refused with a message.
+
+## 1.13.0 (2026-10-10)
+
+### Added
+- **Starting up (W-148):** Settings → Vaults → "Always open the last
+  vault": on, blackglass opens the vault used last without asking; off
+  (the default), the vault picker asks which.
+  - Every vault opened (from the picker, "Open vault", or a path on the
+    command line) is the last one in `vaults.toml` in the config folder
+    (`last = "…"`, before the recent ones), with the setting
+    (`open_last = "on"`).
+  - The first run (no config yet, or no vault opened yet) opens the
+    example vault, in the terminal and the window.
+
+### Changed
+- `run.sh` uses a config folder of its own (`target/run-config`), and the
+  window's smoke test a copy of the example vault and its own config
+  folder: trying things never changes your settings or your last vault.
 
 ## 1.12.0 (2026-10-09)
 

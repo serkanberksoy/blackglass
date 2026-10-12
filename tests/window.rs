@@ -1,5 +1,6 @@
-//! The real window (`--gui`), on a display: it opens a vault, stays up
-//! and closes cleanly. Ignored by default (it needs a display); run with
+//! The real window (`--gui`), on a display: it opens a copy of the
+//! example vault (with a config folder of its own), stays up and closes
+//! cleanly. Ignored by default (it needs a display); run with
 //! `cargo test --test window -- --ignored`.
 
 use std::path::Path;
@@ -13,17 +14,11 @@ fn the_window_opens_a_vault_and_stays_up() {
     let _ = std::fs::remove_dir_all(&root);
     let vault = root.join("vault");
     let config = root.join("config");
-    std::fs::create_dir_all(&vault).unwrap();
     std::fs::create_dir_all(&config).unwrap();
-    std::fs::write(
-        vault.join("Hello.md"),
-        "# Hello 🎉\n\nSome **bold** text.\n",
-    )
-    .unwrap();
     let started = Instant::now();
     let mut child = Command::new(env!("CARGO_BIN_EXE_blackglass"))
-        .arg("--gui")
-        .arg(vault.join("Hello.md"))
+        .args(["--gui", "--example"])
+        .arg(&vault)
         .env("XDG_CONFIG_HOME", &config)
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -42,6 +37,9 @@ fn the_window_opens_a_vault_and_stays_up() {
     let out = child.wait_with_output().unwrap();
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(!err.contains("panicked"), "{err}");
-    // It saved its session in the vault (its own folder there).
-    assert!(vault.join(".blackglass").is_dir());
+    // The example vault was written there; the config folder used is
+    // the test's own, and it remembers that vault.
+    assert!(vault.join("Welcome.md").is_file());
+    let vaults = std::fs::read_to_string(config.join("blackglass/vaults.toml")).unwrap();
+    assert!(vaults.contains("window-smoke"), "{vaults}");
 }

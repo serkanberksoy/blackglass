@@ -20,46 +20,125 @@ pub fn home() -> PathBuf {
     mdedit::platform::home().unwrap_or_else(|| PathBuf::from("/"))
 }
 
-/// The recent vaults' file in the config folder.
+/// The vaults' file in the config folder: the last vault, the recent
+/// ones, and whether the last one opens at start without asking.
 pub const VAULTS_FILE: &str = "vaults.toml";
 
 /// How many recent vaults are kept.
 const RECENT_VAULTS: usize = 10;
 
+/// `vaults.toml`'s contents.
+#[derive(Debug, Default)]
+struct Vaults {
+    /// Open the last vault at start (no vault picker).
+    open_last: bool,
+    /// Newest first; the first is the last vault opened.
+    recent: Vec<PathBuf>,
+}
+
+impl Vaults {
+    fn load(dir: &Path) -> Vaults {
+        let text = std::fs::read_to_string(dir.join(VAULTS_FILE)).unwrap_or_default();
+        let quoted = |l: &str| {
+            l.strip_prefix('"')?
+                .strip_suffix('"')
+                .map(|l| PathBuf::from(l.replace("\\\"", "\"").replace("\\\\", "\\")))
+        };
+        let mut vaults = Vaults::default();
+        let mut in_list = false;
+        for line in text.lines().map(str::trim) {
+            if in_list {
+                if line.starts_with(']') {
+                    in_list = false;
+                } else if let Some(path) = quoted(line.trim_end_matches(',')) {
+                    vaults.recent.push(path);
+                }
+            } else if let Some((key, value)) = line.split_once('=') {
+                match key.trim() {
+                    "open_last" => vaults.open_last = matches!(value.trim(), "\"on\"" | "true"),
+                    "recent" => in_list = true,
+                    _ => {}
+                }
+            }
+        }
+        vaults
+    }
+
+    fn save(&self, dir: &Path) -> std::io::Result<()> {
+        let quote = |path: &Path| {
+            let path = path
+                .to_string_lossy()
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"");
+            format!("\"{path}\"")
+        };
+        let mut text = String::from(
+            "# blackglass: the vaults opened lately, newest first.\n\
+             # open_last = \"on\": open the last vault at start without asking.\n",
+        );
+        let open_last = if self.open_last { "on" } else { "off" };
+        text.push_str(&format!("open_last = \"{open_last}\"\n"));
+        if let Some(last) = self.recent.first() {
+            text.push_str(&format!("last = {}\n", quote(last)));
+        }
+        text.push_str("recent = [\n");
+        for path in &self.recent {
+            text.push_str(&format!("    {},\n", quote(path)));
+        }
+        text.push_str("]\n");
+        std::fs::create_dir_all(dir)?;
+        mdedit::files::write_atomic(&dir.join(VAULTS_FILE), &text)
+    }
+}
+
 /// The vaults opened lately, newest first (from `vaults.toml` in `dir`).
 pub fn recent_vaults(dir: &Path) -> Vec<PathBuf> {
-    let text = std::fs::read_to_string(dir.join(VAULTS_FILE)).unwrap_or_default();
-    text.lines()
-        .map(|l| l.trim().trim_end_matches(','))
-        .filter_map(|l| l.strip_prefix('"')?.strip_suffix('"').map(String::from))
-        .map(|l| PathBuf::from(l.replace("\\\"", "\"").replace("\\\\", "\\")))
-        .collect()
+    Vaults::load(dir).recent
 }
 
-/// Whether blackglass runs for the first time: no vault has been opened
-/// yet (there's no `vaults.toml` in the config folder `dir`).
+/// The vault opened last.
+pub fn last_vault(dir: &Path) -> Option<PathBuf> {
+    recent_vaults(dir).into_iter().next()
+}
+
+/// Whether the last vault opens at start without asking.
+pub fn open_last(dir: &Path) -> bool {
+    Vaults::load(dir).open_last
+}
+
+/// Sets whether the last vault opens at start without asking.
+pub fn set_open_last(dir: &Path, on: bool) -> std::io::Result<()> {
+    let mut vaults = Vaults::load(dir);
+    vaults.open_last = on;
+    vaults.save(dir)
+}
+
+/// Whether blackglass runs for the first time: no config folder, or no
+/// vault opened yet (none in its `vaults.toml`).
 pub fn first_run(dir: Option<&Path>) -> bool {
-    dir.is_some_and(|d| !d.join(VAULTS_FILE).exists())
+    dir.is_none_or(|d| recent_vaults(d).is_empty())
 }
 
-/// Puts `vault` first in `vaults.toml` in `dir` (at most ten are kept).
+/// Puts `vault` first in `vaults.toml` in `dir` (at most ten are kept):
+/// the last vault.
 pub fn remember_vault(dir: &Path, vault: &Path) -> std::io::Result<()> {
-    let mut all = recent_vaults(dir);
-    all.retain(|p| p != vault);
-    all.insert(0, vault.to_path_buf());
-    all.truncate(RECENT_VAULTS);
-    let mut text =
-        String::from("# blackglass: the vaults opened lately, newest first.\nrecent = [\n");
-    for path in &all {
-        let path = path
-            .to_string_lossy()
-            .replace('\\', "\\\\")
-            .replace('"', "\\\"");
-        text.push_str(&format!("    \"{path}\",\n"));
-    }
-    text.push_str("]\n");
-    std::fs::create_dir_all(dir)?;
-    mdedit::files::write_atomic(&dir.join(VAULTS_FILE), &text)
+    let mut vaults = Vaults::load(dir);
+    vaults.recent.retain(|p| p != vault);
+    vaults.recent.insert(0, vault.to_path_buf());
+    vaults.recent.truncate(RECENT_VAULTS);
+    vaults.save(dir)
+}
+
+/// The settings window's Vaults page.
+pub fn vaults_settings() -> Vec<Setting> {
+    vec![Setting::new(
+        "",
+        "open_last",
+        "Always open the last vault",
+        "At start, open the vault used last instead of asking which",
+        Kind::Choice(vec!["off".into(), "on".into()]),
+        "off",
+    )]
 }
 
 /// blackglass's `config.toml`, if it exists, else mdedit's.
@@ -272,7 +351,30 @@ mod tests {
             [PathBuf::from("/a"), PathBuf::from("/b \"q\"")]
         );
         assert!(!first_run(Some(&dir)), "a vault was opened");
-        assert!(!first_run(None), "no config folder: not asked");
+        assert!(first_run(None), "no config folder: as the first run");
+    }
+
+    #[test]
+    fn the_last_vault_and_whether_it_opens_at_once_are_kept() {
+        let dir = scratch("last-vault");
+        assert_eq!(last_vault(&dir), None);
+        assert!(!open_last(&dir), "off by default");
+        set_open_last(&dir, true).unwrap();
+        assert!(open_last(&dir));
+        assert!(first_run(Some(&dir)), "no vault opened yet");
+        remember_vault(&dir, Path::new("/a")).unwrap();
+        remember_vault(&dir, Path::new("/b")).unwrap();
+        assert_eq!(last_vault(&dir), Some(PathBuf::from("/b")));
+        assert!(open_last(&dir), "kept when a vault is remembered");
+        let text = std::fs::read_to_string(dir.join(VAULTS_FILE)).unwrap();
+        assert!(text.contains("open_last = \"on\""), "{text}");
+        assert!(text.contains("last = \"/b\""), "{text}");
+        set_open_last(&dir, false).unwrap();
+        assert!(!open_last(&dir));
+        assert_eq!(
+            recent_vaults(&dir),
+            [PathBuf::from("/b"), PathBuf::from("/a")]
+        );
     }
 
     #[test]

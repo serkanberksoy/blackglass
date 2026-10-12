@@ -5,7 +5,8 @@ the left (files, search, tags), your notes in tabs on the right. Notes are
 plain `.md` files; nothing else is needed.
 
 A vault is any folder: **Open vault** in the command palette opens another
-one, or makes a new folder for one. Press **{command-palette}** for every
+one, or makes a new folder for one. Settings → Vaults → "Always open the
+last vault" opens the vault used last at start, without asking. Press **{command-palette}** for every
 command by name. **Esc** closes a
 window. This page is read-only; **{close-tab}** closes it.
 
@@ -63,7 +64,8 @@ window. This page is read-only; **{close-tab}** closes it.
   open note; every link to it is updated. **Rename folder** and
   **New folder** are in the palette.
 - **Move note to a folder** moves the file or folder chosen in the file
-  explorer (else the open note), with every link to it; **Delete note**
+  explorer (else the open note), with every link to it: to one of the
+  vault's folders, or to a new one typed (`Archive/2026`); **Delete note**
   is in the command palette too ({command-palette}). A deleted note goes
   to the vault's `.trash/` folder, so it can be brought back.
 - New notes can get a unique ID (in the name, as the name or in the

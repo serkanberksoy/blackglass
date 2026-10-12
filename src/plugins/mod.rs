@@ -17,6 +17,7 @@ pub mod git;
 pub mod js;
 pub mod mermaid;
 pub mod moment;
+pub mod orphaned;
 pub mod periodic;
 pub mod quickadd;
 pub mod recent;
@@ -24,6 +25,7 @@ pub mod settings;
 pub mod tables;
 pub mod tasks;
 pub mod templater;
+pub mod tracker;
 pub mod zettelkasten;
 
 use std::cell::RefCell;
@@ -540,6 +542,12 @@ pub trait Plugin {
     /// Notes changed (created, moved, scanned again).
     fn on_vault_changed(&mut self, _vault: &Vault) {}
 
+    /// The vault as it is now, for a plugin that reads notes while drawing
+    /// (Tracker): upgrade it when needed, never keep the `Rc` (the vault
+    /// is changed in place when nothing else holds it). Given to every
+    /// plugin, enabled or not, whenever the vault changes.
+    fn set_vault(&mut self, _vault: std::rc::Weak<Vault>) {}
+
     /// Only the note at `path` changed (it was saved): a plugin with an
     /// index of its own updates just that note. By default, the whole
     /// vault is read again.
@@ -840,6 +848,8 @@ pub fn catalog() -> Vec<Box<dyn Plugin>> {
         Box::new(emoji::EmojiShortcodes::new()),
         Box::new(encrypt::Encrypt::new()),
         Box::new(quickadd::QuickAdd::new()),
+        Box::new(tracker::Tracker::new()),
+        Box::new(orphaned::OrphanedFiles::new()),
     ]
 }
 
@@ -1218,6 +1228,16 @@ impl Plugins {
     pub fn note_saved(&mut self, path: &Path, vault: &Vault) {
         for e in self.entries.iter_mut().filter(|e| e.enabled) {
             e.plugin.on_note_saved(path, vault);
+        }
+    }
+
+    /// Hands the vault as it is now to the query blocks and the plugins
+    /// ([`Plugin::set_vault`]); before every `vault_changed` /
+    /// `note_changed`.
+    pub fn set_vault(&mut self, vault: &Rc<Vault>) {
+        self.queries.set_vault(vault);
+        for e in &mut self.entries {
+            e.plugin.set_vault(Rc::downgrade(vault));
         }
     }
 

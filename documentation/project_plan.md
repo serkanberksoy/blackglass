@@ -336,7 +336,21 @@ In order:
     macOS app script, a window build in the Linux release; on Windows
     `blackglass-window.exe` (1.12.0). Next: a signed macOS app in the
     releases, Linux packages, a Windows installer.
-24. **Backlog 2026-10-07: mdedit on crates.io** (not started, for later):
+24. ✅ **Starting up, W-148** (requested 2026-10-10; 1.13.0): the first
+    run opens the example vault; the last vault is kept in `vaults.toml`;
+    "Always open the last vault" (Settings → Vaults) opens it without the
+    picker. Tests and `run.sh` never use the user's config or vaults.
+25. ✅ **Tracker, W-149** (requested 2026-10-13; 1.14.0, 1.15.0): the
+    community plugin's ```` ```tracker ```` blocks: every search type,
+    dates from names, expressions, line / bar / month / pie / bullet /
+    summary as text, clicks for values and months
+    (`requirements/tracker_requirements.md`, every row done).
+26. 🟡 **Orphaned files, W-150** (requested 2026-10-13; 1.16.0): a
+    report of orphaned files, broken links, empty files and empty
+    folders at the top of the vault
+    (`requirements/orphaned_requirements.md`). Next: deleting or
+    archiving what's found.
+27. **Backlog 2026-10-07: mdedit on crates.io** (not started, for later):
     publish mdedit as a library on crates.io so blackglass builds without
     a `../mdedit` checkout beside it (simpler source builds, a simpler
     Homebrew formula, a step towards homebrew-core) and others can embed

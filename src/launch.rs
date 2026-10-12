@@ -80,7 +80,7 @@ pub fn main(args: Vec<String>) -> io::Result<()> {
 /// vault; a folder that can't be opened goes back to choosing one, saying
 /// why.
 fn run_with(path: Option<std::path::PathBuf>, mouse: bool) -> io::Result<()> {
-    let (mut path, mut problem) = startup::first(path);
+    let (mut path, mut problem) = startup::start(path);
     let (vault, note) = loop {
         // Without a folder: choose a vault (recent ones, or any folder).
         let chosen = match path.take() {

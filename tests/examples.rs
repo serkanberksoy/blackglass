@@ -211,3 +211,36 @@ fn show_notes() {
         }
     }
 }
+
+#[test]
+fn every_tracker_block_in_the_example_vault_draws() {
+    let vault = example_vault();
+    let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 13).unwrap();
+    let mut count = 0;
+    for note in &vault.notes {
+        let mut body: Option<Vec<String>> = None;
+        for line in &note.lines {
+            match &mut body {
+                Some(b) if line.trim_start().starts_with("```") => {
+                    let rows =
+                        blackglass::plugins::tracker::render(&b.join("\n"), &vault, 80, today);
+                    let text: Vec<String> = rows
+                        .iter()
+                        .map(|(l, _)| l.spans.iter().map(|s| s.content.as_ref()).collect())
+                        .collect();
+                    assert!(
+                        !text.iter().any(|t| t.starts_with("Tracker:")),
+                        "{}: {text:#?}",
+                        note.rel.display()
+                    );
+                    count += 1;
+                    body = None;
+                }
+                Some(b) => b.push(line.clone()),
+                None if line.trim() == "```tracker" => body = Some(Vec::new()),
+                None => {}
+            }
+        }
+    }
+    assert!(count >= 6, "the Tracker note's blocks: {count}");
+}
